@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "runimate",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["serve.py", "8040"],
+      "port": 8040
+    }
+  ]
+}
