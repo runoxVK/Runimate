@@ -47,7 +47,7 @@ async function boot() {
   }
   if (fresh && !localStorage.getItem('runimate.welcomed')) {
     try { localStorage.setItem('runimate.welcomed', '1'); } catch {}
-    toast('Welcome! Drag the red nodes to pose · N adds a frame · Space plays · ? shows shortcuts', { ms: 6000 });
+    toast('Welcome! Drag the nodes to pose · N adds a frame · Space plays · ? shows shortcuts', { ms: 6000 });
   }
 }
 

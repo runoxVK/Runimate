@@ -23,13 +23,14 @@ export const app = {
   preview: null, // expanded-timeline entry being scrubbed, or null
   boneDraw: null, // { id, node } while drawing art onto a bone
   attachPending: false, // waiting for a bone click to attach selected strokes
+  ruler: null, // drawing guide, see ruler.js
   clipboard: null,
   fileHandle: null,
   rev: 0,
   savedRev: 0,
 };
 
-const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws'];
+const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler'];
 export function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem('runimate.prefs') || '{}');

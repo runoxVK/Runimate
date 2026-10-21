@@ -22,11 +22,12 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 
 | Thing | How |
 | --- | --- |
-| Pose | Drag red nodes (Rotate mode). **Stretch** mode changes bone length, **IK** mode drags a hand/foot and bends the elbow/knee. Orange node or the body moves the figure; round handle rotates, square handle scales. Shift snaps to 15°. |
+| Pose | Drag the round nodes (Rotate mode). **Stretch** mode changes bone length, **IK** mode drags a hand/foot and bends the elbow/knee. The square main node or the body moves the figure; round handle rotates, square handle scales. Shift snaps to 15°. |
 | Frames | `N` new frame (copies poses), `Shift+N` duplicate incl. drawings. Drag thumbnails to reorder. |
 | Timing | Project FPS, plus per-keyframe **in-betweens** (`T` / `Alt+T`) that either **Tween** (with easing) or **Hold**. The scrubber previews every generated frame. |
 | Onion skin | `O`; the arrow next to the button sets frames before/after and strength. |
 | Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, line/rect/ellipse, lasso select, eyedropper. |
+| Rulers | `Q` toggles a **straight** or **circle** ruler (`Shift+Q` straight), `M` turns on **mirror symmetry**. Strokes started near a ruler follow it, or every stroke does with *Snap from anywhere* (parallel lines / concentric circles). Drag the white handles to place it, or use the Ruler button's angle, radius and move controls from the keyboard. |
 | Layers | **Frame-by-frame** drawing layers (own drawing per keyframe), **Sprite** layers (one drawing you move/turn/scale per frame, tweened), figure layers and image layers for tracing. |
 | Bone art | Select a joint → *Draw on this bone*, or lasso strokes → *Attach to a bone*. The art follows (and optionally stretches with) the bone in every frame and is saved with the figure. |
 | Library | Save any figure (rig, colours, bone art, pose) or drawing; insert it into any project. Export/import as `.runilib`. |

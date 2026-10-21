@@ -4,6 +4,29 @@
 import { DEG } from './geom.js';
 
 const INK = '#1b1b1f';
+const FRONT = '#222222';
+const BACK = '#000000';
+
+// Stick Nodes-style default: thick limbs, big head, bendy spine, foot nubs.
+// Far-side limbs are pure black and drawn first so they sit behind the body.
+const stickman = [
+  ['root', null],
+  ['armR1', 'torso', 44, 81, 'line', 27, BACK],
+  ['armR2', 'armR1', 40, 8, 'line', 27, BACK],
+  ['legR1', 'root', 70, 133, 'line', 27, BACK],
+  ['legR2', 'legR1', 72, 18, 'line', 27, BACK],
+  ['footR', 'legR2', 6, -43, 'line', 27, BACK],
+  ['spine1', 'root', 28, -11, 'line', 27, FRONT],
+  ['spine2', 'spine1', 30, 9, 'line', 27, FRONT],
+  ['torso', 'spine2', 30, 12, 'line', 27, FRONT],
+  ['neck', 'torso', 10, 0, 'line', 27, FRONT],
+  ['head', 'neck', 64, 5, 'filled', 4, FRONT],
+  ['legL1', 'root', 70, -145, 'line', 27, FRONT],
+  ['legL2', 'legL1', 72, -15, 'line', 27, FRONT],
+  ['footL', 'legL2', 5, 22, 'line', 27, FRONT],
+  ['armL1', 'torso', 44, -109, 'line', 27, FRONT],
+  ['armL2', 'armL1', 40, -5, 'line', 27, FRONT],
+];
 
 const humanoid = [
   ['root', null],
@@ -69,7 +92,8 @@ const dog = [
 ];
 
 export const PRESETS = [
-  { id: 'stickman', name: 'Stickman', spec: humanoid, rootAngle: -90 * DEG },
+  { id: 'stickman', name: 'Stickman', spec: stickman, rootAngle: -90 * DEG },
+  { id: 'stickman-thin', name: 'Thin stickman', spec: humanoid, rootAngle: -90 * DEG },
   { id: 'stickman-pro', name: 'Detailed stickman', spec: detailed, rootAngle: -90 * DEG },
   { id: 'ball', name: 'Ball', spec: ball, rootAngle: -90 * DEG },
   { id: 'sword', name: 'Sword', spec: sword, rootAngle: -90 * DEG },

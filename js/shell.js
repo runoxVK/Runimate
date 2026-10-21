@@ -7,7 +7,8 @@ import { runCommand, keysFor, prettyKey, openHelp } from './commands.js';
 import { setContextMenuProvider, view, zoomBy, fit } from './stage.js';
 import { saveSelectionToLibrary } from './library.js';
 import { openExport } from './export.js';
-import { h, icon, ibtn, popupMenu, promptDialog } from './ui.js';
+import { h, icon, ibtn, popupMenu, promptDialog, popover } from './ui.js';
+import { ruler, RULER_TYPES, setRulerType, resetRuler, lineAngle, setLineAngle, nudgeRuler } from './ruler.js';
 
 const tip = (label, id) => (keysFor(id) ? `${label} (${prettyKey(keysFor(id))})` : label);
 
@@ -32,7 +33,7 @@ const BRUSHES = {
   highlighter: { label: 'Highlighter', size: 28, opacity: 0.35, smooth: 0.3, pressure: false, taper: false },
 };
 
-let topbar, toolbar, optbar, banner, nameBtn, saveState, undoBtn, redoBtn, zoomLabel;
+let topbar, toolbar, optbar, banner, nameBtn, saveState, undoBtn, redoBtn, zoomLabel, rulerToolBtn;
 
 export function initShell() {
   topbar = document.getElementById('topbar');
@@ -70,6 +71,7 @@ export function initShell() {
   toolbar.append(
     h('div', { class: 'tools', role: 'toolbar', 'aria-label': 'Tools', 'aria-orientation': 'vertical' }, toolBtns),
     h('div', { class: 'tools-bottom' },
+      (rulerToolBtn = ibtn('ruler', tip('Ruler & symmetry', 'ruler-toggle'), (e) => rulerPopover(e.currentTarget), 'toggle')),
       ibtn('figure', tip('Add a stickman', 'add-stickman'), () => A.insertPreset('stickman')),
       ibtn('plus', tip('Zoom in', 'zoom-in'), () => zoomBy(1.25), 'mini'),
       zoomLabel,
@@ -90,8 +92,14 @@ export function initShell() {
   setContextMenuProvider(contextItems);
 
   onChange((f) => {
-    if (['tool', 'prefs', 'sel', 'project', 'layers', 'frame'].some((k) => f.has(k))) renderOptions();
+    if (['tool', 'prefs', 'sel', 'project', 'layers', 'frame', 'ruler'].some((k) => f.has(k))) renderOptions();
     if (f.has('tool') || f.has('project')) updateTools();
+    if (f.has('ruler') || f.has('tool') || f.has('project')) {
+      const on = ruler().type !== 'off';
+      rulerToolBtn.classList.toggle('on', on);
+      rulerToolBtn.setAttribute('aria-pressed', on);
+      rulerToolBtn.replaceChildren(icon(RULER_ICON[ruler().type], 20));
+    }
     if (f.has('view') || f.has('project')) zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
     updateTop();
     updateBanner();
@@ -256,8 +264,59 @@ function renderOptions() {
   } else if (t === 'eyedropper') parts.push(hint('Tap the canvas to pick a colour'));
   else if (t === 'hand') parts.push(hint('Drag to pan · pinch or Ctrl+scroll to zoom'));
 
-  const right = ['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse', 'lasso'].includes(t) ? targetPicker() : null;
-  optbar.replaceChildren(h('div', { class: 'opts' }, parts), h('div', { class: 'opts-right' }, right));
+  const drawing = ['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse'].includes(t);
+  const right = drawing || t === 'lasso' ? targetPicker() : null;
+  optbar.replaceChildren(h('div', { class: 'opts' }, parts), h('div', { class: 'opts-right' }, drawing ? rulerButton() : null, right));
+}
+
+// ---------------------------------------------------------------- ruler
+const RULER_ICON = { off: 'ruler', line: 'ruler', circle: 'circle', mirror: 'mirror' };
+
+function rulerButton() {
+  const r = ruler();
+  const label = RULER_TYPES.find(([v]) => v === r.type)[1];
+  return h('button', {
+    type: 'button', class: `btn target ${r.type !== 'off' ? 'accent' : ''}`, title: tip('Ruler & symmetry', 'ruler-toggle'),
+    onclick: (e) => rulerPopover(e.currentTarget),
+  }, icon(RULER_ICON[r.type], 15), h('span', {}, r.type === 'off' ? 'Ruler' : label), icon('down', 12));
+}
+
+function rulerPopover(anchor) {
+  const body = h('div', { class: 'pop-body ruler-pop' });
+  const num = (label, get, set, opts = {}) => h('label', { class: 'field' }, h('span', {}, label),
+    h('input', { type: 'number', class: 'num', value: Math.round(get() * 10) / 10, step: opts.step || 1, min: opts.min, oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) set(v); } }));
+  const fill = () => {
+    const r = ruler();
+    const parts = [
+      h('b', {}, 'Ruler & symmetry'),
+      h('div', { class: 'seg wrap' }, RULER_TYPES.map(([v, l]) => h('button', {
+        type: 'button', class: r.type === v ? 'on' : '', 'aria-pressed': r.type === v,
+        onclick: () => { setRulerType(v); fill(); body.querySelector('.seg .on')?.focus(); },
+      }, v !== 'off' ? icon(RULER_ICON[v], 15) : null, h('span', {}, l)))),
+    ];
+    if (r.type === 'line' || r.type === 'circle') {
+      parts.push(h('label', { class: 'field check' },
+        h('input', { type: 'checkbox', checked: r.anywhere, onchange: (e) => { r.anywhere = e.target.checked; changed('pref-save', 'content'); fill(); } }),
+        h('span', {}, r.type === 'line' ? 'Snap from anywhere (parallel lines)' : 'Snap from anywhere (concentric circles)')));
+      parts.push(h('p', { class: 'muted small' }, r.anywhere ? 'Every brush stroke follows the guide.' : 'Strokes that start near the guide follow it; others stay freehand.'));
+    }
+    if (r.type === 'line') parts.push(num('Angle °', lineAngle, setLineAngle));
+    if (r.type === 'circle') parts.push(num('Radius', () => r.r, (v) => { r.r = Math.max(4, v); changed('pref-save', 'content'); }, { min: 4 }));
+    if (r.type === 'mirror') parts.push(h('div', { class: 'seg' }, [['v', 'Left ↔ right'], ['h', 'Top ↕ bottom']].map(([v, l]) => h('button', {
+      type: 'button', class: r.axis === v ? 'on' : '', onclick: () => { r.axis = v; changed('pref-save', 'content'); fill(); },
+    }, l))));
+    if (r.type !== 'off') {
+      parts.push(h('div', { class: 'row gap' }, h('span', { class: 'muted' }, 'Move'),
+        ibtn('prev', 'Move left', () => nudgeRuler(-10, 0), 'mini'), ibtn('up', 'Move up', () => nudgeRuler(0, -10), 'mini'),
+        ibtn('down', 'Move down', () => nudgeRuler(0, 10), 'mini'), ibtn('next', 'Move right', () => nudgeRuler(10, 0), 'mini'),
+        h('button', { type: 'button', class: 'btn', onclick: () => { resetRuler(); fill(); } }, 'Reset')));
+      parts.push(h('p', { class: 'muted small' }, 'Drag the white handles on the canvas to place it (Shift snaps the angle).'));
+    }
+    body.replaceChildren(...parts);
+  };
+  fill();
+  const m = popover(anchor, body);
+  m.querySelector('.seg .on, .seg button')?.focus();
 }
 
 // ---------------------------------------------------------------- context menu

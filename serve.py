@@ -9,7 +9,7 @@ import socketserver
 import sys
 import os
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8040
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 8040))
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -42,7 +42,8 @@ def lan_addresses():
     return sorted(ip for ip in ips if not ip.startswith('127.'))
 
 
-socketserver.ThreadingTCPServer.allow_reuse_address = True
+# On Windows SO_REUSEADDR lets two servers share a port silently, so only use it elsewhere.
+socketserver.ThreadingTCPServer.allow_reuse_address = os.name != 'nt'
 with socketserver.ThreadingTCPServer(('0.0.0.0', PORT), Handler) as httpd:
     print(f'Runimate is running:  http://localhost:{PORT}')
     for ip in lan_addresses():

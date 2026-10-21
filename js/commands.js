@@ -8,6 +8,7 @@ import { openExport } from './export.js';
 import { save, saveAs, openFile, newProjectDialog, projectsDialog } from './projects.js';
 import { saveSelectionToLibrary, importLibrary, exportLibrary } from './library.js';
 import { h, icon, openDialog, isTyping, toast, isMac } from './ui.js';
+import { toggleRuler, setRulerType, ruler } from './ruler.js';
 
 export const commands = [];
 const byId = new Map();
@@ -102,6 +103,11 @@ cmd('zoom-in', 'View', 'Zoom in', ['=', 'ctrl+='], () => zoomBy(1.25));
 cmd('zoom-out', 'View', 'Zoom out', ['-', 'ctrl+-'], () => zoomBy(0.8));
 cmd('zoom-fit', 'View', 'Fit canvas to window', ['0', 'ctrl+0'], fit);
 cmd('zoom-100', 'View', 'Actual size (100%)', 'ctrl+alt+0', () => zoomTo(1));
+cmd('ruler-toggle', 'Tools', 'Ruler on / off', 'q', () => { toggleRuler(); rulerToast(); });
+cmd('ruler-line', 'Tools', 'Straight ruler', 'shift+q', () => { setRulerType('line'); rulerToast(); });
+cmd('ruler-circle', 'Tools', 'Circle ruler', null, () => { setRulerType('circle'); rulerToast(); });
+cmd('ruler-mirror', 'Tools', 'Mirror symmetry', 'm', () => { setRulerType('mirror'); rulerToast(); });
+cmd('ruler-anywhere', 'Tools', 'Ruler: snap strokes from anywhere', null, () => { ruler().anywhere = !ruler().anywhere; changed('pref-save', 'ruler'); toast(ruler().anywhere ? 'Every stroke follows the ruler' : 'Only strokes started near the ruler follow it', { ms: 1600 }); });
 cmd('grid', 'View', 'Toggle grid', 'g', () => { app.grid = !app.grid; changed('prefs', 'content'); });
 cmd('panel', 'View', 'Show / hide side panel', '\\', () => { app.panelOpen = !app.panelOpen; changed('panel'); });
 cmd('panel-props', 'View', 'Properties panel', 'alt+1', panelTab('props'));
@@ -111,6 +117,12 @@ cmd('focus-cycle', 'View', 'Move focus between areas', 'f6', cycleFocus);
 cmd('palette', 'Help', 'Command palette', ['ctrl+k', '/'], openPalette);
 cmd('help', 'Help', 'Keyboard shortcuts', ['?', 'shift+/', 'f1'], openHelp);
 
+function rulerToast() {
+  const t = ruler().type;
+  const drawing = ['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse'].includes(app.tool);
+  if (t !== 'off' && !drawing) A.setTool('brush');
+  toast({ off: 'Ruler off', line: 'Straight ruler — strokes started near it follow it. Drag its handles to move it.', circle: 'Circle ruler — strokes started near it follow the circle', mirror: 'Mirror symmetry — everything you draw is reflected' }[t], { ms: 2200 });
+}
 function escape() {
   if (app.playing) return stopPlay();
   if (app.boneDraw) return A.endBoneDraw();

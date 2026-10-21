@@ -9,6 +9,7 @@ import { evalKey, evalEntry } from './tween.js';
 import { currentEntry, stop as stopPlayback } from './player.js';
 import { apply, inv, chain, translate, rotate, scale, segDist, pointInPoly, boxTransform, boxValid, DEG, clamp, round2 } from './geom.js';
 import { toast, popupMenu } from './ui.js';
+import { snapper, mirrorMatrix, rulerHandles, dragRulerHandle, drawRuler, ruler } from './ruler.js';
 
 export const view = { z: 1, x: 0, y: 0 };
 let canvas, ctx, dpr = 1, cssW = 0, cssH = 0;
@@ -345,6 +346,20 @@ function onDown(e) {
     changed('playframe', 'frame');
   }
 
+  // Ruler handles win over drawing so the guide can be moved with any drawing tool.
+  if (editable()) {
+    const hr = hitRadius(e.pointerType) + 4;
+    const hit = rulerHandles().find((hd) => {
+      const [hx, hy] = toScreen(...hd.p);
+      return Math.hypot(hx - sx, hy - sy) <= hr;
+    });
+    if (hit) {
+      const [x, y] = toStage(sx, sy);
+      drag = { kind: 'ruler', id: hit.id, x0: x, y0: y, start: JSON.parse(JSON.stringify(ruler())) };
+      return;
+    }
+  }
+
   const fingerNav = e.pointerType === 'touch' && !app.fingerDraws && (DRAW_TOOLS.has(app.tool) || app.tool === 'eyedropper');
   if (e.button === 1 || app.tool === 'hand' || fingerNav || spaceHeld) {
     drag = { kind: 'pan', sx, sy, vx: view.x, vy: view.y };
@@ -497,15 +512,18 @@ function startTool(e, sx, sy) {
   const m = targetMatrix(target);
   const mi = inv(m);
   const ms = matScale(m);
+  const mirror = mirrorMatrix();
   if (tool === 'brush' || tool === 'fill') {
-    const [lx, ly] = apply(mi, x, y);
-    drag = { kind: tool, target, mi, ms, fx: x, fy: y, pts: [lx, ly, pressureOf(e)], lastS: [sx, sy] };
+    const snap = tool === 'brush' ? snapper(x, y, view.z) : null;
+    const [qx, qy] = snap ? snap(x, y) : [x, y];
+    const [lx, ly] = apply(mi, qx, qy);
+    drag = { kind: tool, target, m, mi, ms, mirror, snap, fx: qx, fy: qy, pts: [lx, ly, pressureOf(e)], lastS: [sx, sy] };
   } else if (tool === 'eraser') {
     checkpoint();
-    drag = { kind: 'erase', target, mi, ms, last: null, changed: false };
+    drag = { kind: 'erase', target, mi, ms, mirror, snap: snapper(x, y, view.z), last: null, changed: false };
     eraseAt(x, y);
   } else if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
-    drag = { kind: 'shape', shape: tool, target, mi, ms, x0: x, y0: y, x1: x, y1: y };
+    drag = { kind: 'shape', shape: tool, target, m, mi, ms, mirror, x0: x, y0: y, x1: x, y1: y };
   }
 }
 
@@ -595,6 +613,9 @@ function moveTool(e, sx, sy) {
       view.y = d.vy + (sy - d.sy);
       lastFit = null;
       break;
+    case 'ruler':
+      dragRulerHandle(d.id, x, y, d.x0, d.y0, d.start, e.shiftKey);
+      break;
     case 'node': {
       const layer = d.layer;
       const world = computeWorld(layer.rig, d.pose);
@@ -622,9 +643,14 @@ function moveTool(e, sx, sy) {
       const last = d.lastS;
       if (Math.hypot(sx - last[0], sy - last[1]) < 1.2) return;
       d.lastS = [sx, sy];
-      const k = d.kind === 'brush' ? 1 - app.brush.smooth * 0.85 : 0.6;
-      d.fx += (x - d.fx) * k;
-      d.fy += (y - d.fy) * k;
+      if (d.snap) {
+        // Along a ruler the line is already straight / round, so skip smoothing lag.
+        [d.fx, d.fy] = d.snap(x, y);
+      } else {
+        const k = d.kind === 'brush' ? 1 - app.brush.smooth * 0.85 : 0.6;
+        d.fx += (x - d.fx) * k;
+        d.fy += (y - d.fy) * k;
+      }
       const [lx, ly] = apply(d.mi, d.fx, d.fy);
       d.pts.push(lx, ly, pressureOf(e));
       break;
@@ -694,15 +720,20 @@ function moveTransform(d, x, y, snap) {
 
 function eraseAt(x, y) {
   const d = drag;
+  if (d.snap) [x, y] = d.snap(x, y);
   const r = app.eraser.size / 2;
   const steps = d.last ? Math.max(1, Math.ceil(Math.hypot(x - d.last[0], y - d.last[1]) / (r * 0.5))) : 1;
   let arr = targetStrokes(d.target);
   for (let i = 1; i <= steps; i++) {
     const px = d.last ? d.last[0] + ((x - d.last[0]) * i) / steps : x;
     const py = d.last ? d.last[1] + ((y - d.last[1]) * i) / steps : y;
-    const [lx, ly] = apply(d.mi, px, py);
     const lr = r / d.ms;
-    arr = app.eraser.mode === 'whole' ? eraseWhole(arr, lx, ly, lr) : eraseCut(arr, lx, ly, lr);
+    const spots = [[px, py]];
+    if (d.mirror) spots.push(apply(d.mirror, px, py));
+    for (const [qx, qy] of spots) {
+      const [lx, ly] = apply(d.mi, qx, qy);
+      arr = app.eraser.mode === 'whole' ? eraseWhole(arr, lx, ly, lr) : eraseCut(arr, lx, ly, lr);
+    }
   }
   d.last = [x, y];
   if (arr !== targetStrokes(d.target)) {
@@ -712,9 +743,12 @@ function eraseAt(x, y) {
   }
 }
 
-function commitStroke(target, stroke) {
+// d carries the target matrices; with mirror symmetry on, a reflected copy is added too.
+function commitStroke(target, stroke, d) {
   checkpoint();
-  setTargetStrokes(target, [...targetStrokes(target), stroke]);
+  const add = [stroke];
+  if (d?.mirror) add.push(transformStroke(stroke, chain(d.mi, d.mirror, d.m)));
+  setTargetStrokes(target, [...targetStrokes(target), ...add]);
   changed('content');
 }
 
@@ -725,6 +759,9 @@ function endTool(e, sx, sy) {
     case 'pan':
       changed('view');
       break;
+    case 'ruler':
+      changed('pref-save', 'ruler');
+      break;
     case 'node':
     case 'figure-move':
     case 'xform':
@@ -733,19 +770,19 @@ function endTool(e, sx, sy) {
       break;
     case 'brush': {
       // Let the smoothed line catch up to where the pen lifted.
-      const [lx, ly] = apply(d.mi, x, y);
+      const [lx, ly] = apply(d.mi, ...(d.snap ? d.snap(x, y) : [x, y]));
       const n = d.pts.length;
       const lp = d.pts[n - 1];
       if (n >= 3 && Math.hypot(lx - d.pts[n - 3], ly - d.pts[n - 2]) > 0.5) d.pts.push(lx, ly, lp);
       const b = app.brush;
       const pts = finishFreehand(d.pts, { taper: b.taper, width: b.size / d.ms });
-      commitStroke(d.target, { pts, w: round2(b.size / d.ms), c: b.color, o: b.opacity, fill: null, closed: false });
+      commitStroke(d.target, { pts, w: round2(b.size / d.ms), c: b.color, o: b.opacity, fill: null, closed: false }, d);
       break;
     }
     case 'fill': {
       if (d.pts.length < 9) break;
       const pts = finishFreehand(d.pts.map((v, i) => (i % 3 === 2 ? 1 : v)), { taper: false });
-      commitStroke(d.target, { pts, w: 0, c: app.fillTool.color, o: app.fillTool.opacity, fill: app.fillTool.color, closed: true });
+      commitStroke(d.target, { pts, w: 0, c: app.fillTool.color, o: app.fillTool.opacity, fill: app.fillTool.color, closed: true }, d);
       break;
     }
     case 'erase':
@@ -763,7 +800,7 @@ function endTool(e, sx, sy) {
       const closed = d.shape !== 'line';
       const fill = closed && sh.fill ? sh.fillColor : null;
       const w = !closed || sh.stroke || !fill ? round2(app.brush.size / d.ms) : 0;
-      commitStroke(d.target, { pts: local, w, c: app.brush.color, o: app.brush.opacity, fill, closed });
+      commitStroke(d.target, { pts: local, w, c: app.brush.color, o: app.brush.opacity, fill, closed }, d);
       break;
     }
     case 'lasso':
@@ -917,21 +954,33 @@ function render(noOverlay = false) {
   renderScene(ctx, p, st);
 
   // Live previews in their target space.
+  // Live previews in their target space (plus the mirrored copy when symmetry is on).
+  const copies = drag?.mirror ? [null, drag.mirror] : [null];
   if (drag && (drag.kind === 'brush' || drag.kind === 'fill')) {
-    ctx.save();
     const m = targetMatrix(drag.target);
-    ctx.transform(...m);
     const b = app.brush;
-    drawStroke(ctx, drag.kind === 'brush'
+    const live = drag.kind === 'brush'
       ? { pts: drag.pts, w: b.size / drag.ms, c: b.color, o: b.opacity, fill: null }
-      : { pts: drag.pts, w: 0, c: app.fillTool.color, o: app.fillTool.opacity * 0.8, fill: app.fillTool.color, closed: true }, true);
-    ctx.restore();
+      : { pts: drag.pts, w: 0, c: app.fillTool.color, o: app.fillTool.opacity * 0.8, fill: app.fillTool.color, closed: true };
+    for (const mm of copies) {
+      ctx.save();
+      if (mm) ctx.transform(...mm);
+      ctx.transform(...m);
+      drawStroke(ctx, live, true);
+      ctx.restore();
+    }
   }
   if (drag && drag.kind === 'shape') {
     const pts = shapeStagePoints(drag);
     if (pts) {
       const sh = app.shape, closed = drag.shape !== 'line';
-      drawStroke(ctx, { pts, w: !closed || sh.stroke || !sh.fill ? app.brush.size : 0, c: app.brush.color, o: app.brush.opacity, fill: closed && sh.fill ? sh.fillColor : null, closed }, true);
+      const live = { pts, w: !closed || sh.stroke || !sh.fill ? app.brush.size : 0, c: app.brush.color, o: app.brush.opacity, fill: closed && sh.fill ? sh.fillColor : null, closed };
+      for (const mm of copies) {
+        ctx.save();
+        if (mm) ctx.transform(...mm);
+        drawStroke(ctx, live, true);
+        ctx.restore();
+      }
     }
   }
 
@@ -1051,20 +1100,25 @@ function drawOverlays() {
         const w = world.get(n.id);
         const [x, y] = toScreen(w.x, w.y);
         const selected = isSel && app.sel.node === n.id;
-        const r = w.root ? 7.5 : 6;
+        // Stick Nodes-style handles: thin hollow rings, a square for the main node.
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = w.root ? '#ffb020' : n.art ? '#c77dff' : '#ff5a36';
-        ctx.fill();
-        ctx.lineWidth = selected ? 3 : 1.5;
-        ctx.strokeStyle = selected ? '#ffffff' : 'rgba(0,0,0,.55)';
-        ctx.stroke();
+        if (w.root) ctx.rect(x - 5.5, y - 5.5, 11, 11);
+        else ctx.arc(x, y, 5.5, 0, Math.PI * 2);
         if (selected) {
+          ctx.fillStyle = 'rgba(77,163,255,.9)';
+          ctx.fill();
+        }
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = 'rgba(0,0,0,.5)';
+        ctx.stroke();
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = selected ? '#ffffff' : n.art ? '#d7a6ff' : '#d6d6d6';
+        ctx.stroke();
+        if (w.root) {
           ctx.beginPath();
-          ctx.arc(x, y, r + 5, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(77,163,255,.95)';
-          ctx.lineWidth = 2;
-          ctx.stroke();
+          ctx.rect(x - 2, y - 2, 4, 4);
+          ctx.fillStyle = selected ? '#ffffff' : '#d6d6d6';
+          ctx.fill();
         }
       }
     }
@@ -1114,6 +1168,8 @@ function drawOverlays() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
+
+  drawRuler(ctx, toScreen, view.z, !!drag?.snap);
 
   // Brush / eraser cursor.
   if (hover && !gesture && ['brush', 'eraser', 'line', 'rect', 'ellipse'].includes(tool)) {

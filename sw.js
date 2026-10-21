@@ -1,11 +1,11 @@
 // Offline support: network first (so updates show up immediately), cache as fallback.
-const CACHE = 'runimate-v1';
+const CACHE = 'runimate-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css', './icons/icon.svg', './icons/icon-192.png',
   './js/main.js', './js/app.js', './js/model.js', './js/geom.js', './js/rig.js', './js/presets.js', './js/brush.js',
   './js/render.js', './js/tween.js', './js/player.js', './js/stage.js', './js/timeline.js', './js/panels.js',
   './js/shell.js', './js/commands.js', './js/actions.js', './js/library.js', './js/projects.js', './js/storage.js',
-  './js/fileio.js', './js/export.js', './js/gif.js', './js/zip.js', './js/ui.js', './vendor/mp4-muxer.mjs',
+  './js/fileio.js', './js/export.js', './js/gif.js', './js/zip.js', './js/ui.js', './js/ruler.js', './vendor/mp4-muxer.mjs',
 ];
 
 self.addEventListener('install', (e) => {
