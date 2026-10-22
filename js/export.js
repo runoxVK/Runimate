@@ -7,6 +7,7 @@ import { makeZip } from './zip.js';
 import { h, icon, openDialog, toast } from './ui.js';
 import { downloadBlob, canShareFile, shareFile, safeName, saveProjectFile, EXT } from './fileio.js';
 import { currentEntry } from './player.js';
+import { hasSound, renderMix } from './audio.js';
 
 const FORMATS = [
   { id: 'gif', label: 'Animated GIF', desc: 'Loops anywhere — chats, web', icon: 'image', anim: true, alpha: true },
@@ -75,8 +76,9 @@ export function openExport(initial) {
     rowLoop.classList.toggle('hidden', f.id !== 'gif');
     const [w, hh] = dims();
     const n = f.anim ? frameEntries().length : 1;
+    const soundNote = hasSound(P()) ? (f.id === 'mp4' ? ' · with sound' : f.anim ? ' · no sound in this format' : '') : '';
     info.textContent = f.id === 'project' ? 'Saves everything — layers, rigs, drawings — so you can keep editing later or on another device.'
-      : `${w} × ${hh} px` + (f.anim ? ` · ${n} frames · ${(n / opts.fps).toFixed(2)} s at ${opts.fps} fps` : '');
+      : `${w} × ${hh} px` + (f.anim ? ` · ${n} frames · ${(n / opts.fps).toFixed(2)} s at ${opts.fps} fps` : '') + soundNote;
     if (full) result.classList.add('hidden');
   }
 
@@ -121,6 +123,7 @@ export function openExport(initial) {
   }
 
   function showResult({ blob, name }) {
+    window.__lastExport = { blob, name };
     result.replaceChildren(
       h('div', { class: 'result-row' },
         icon('check', 18),
@@ -242,14 +245,21 @@ async function exportMp4(entries, w, hh, fps, name, setP, isCancelled) {
     } catch {}
   }
   if (!codec) return exportRecorder(entries, w, hh, fps, name, setP, isCancelled);
-  const muxer = new Muxer({ target: new ArrayBufferTarget(), video: { codec: 'avc', width: w, height: hh, frameRate: fps }, fastStart: 'in-memory', firstTimestampBehavior: 'offset' });
+  // Very short clips look odd in players; hold the single frame for at least half a second.
+  const list = entries.length === 1 ? Array(Math.max(1, Math.round(fps / 2))).fill(entries[0]) : entries;
+  const audio = hasSound(p) ? await prepareAudio(p, (entries[0].i ?? 0) / fps, list.length / fps) : null;
+  const muxer = new Muxer({
+    target: new ArrayBufferTarget(),
+    video: { codec: 'avc', width: w, height: hh, frameRate: fps },
+    audio: audio ? { codec: 'aac', numberOfChannels: 2, sampleRate: audio.sampleRate } : undefined,
+    fastStart: 'in-memory',
+    firstTimestampBehavior: 'offset',
+  });
   let failure = null;
   const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => (failure = e) });
   enc.configure({ codec, width: w, height: hh, bitrate, framerate: fps, avc: { format: 'avc' } });
   const canvas = document.createElement('canvas');
   const dur = 1e6 / fps;
-  // Very short clips look odd in players; hold the single frame for at least half a second.
-  const list = entries.length === 1 ? Array(Math.max(1, Math.round(fps / 2))).fill(entries[0]) : entries;
   for (let i = 0; i < list.length; i++) {
     if (isCancelled() || failure) break;
     renderToCanvas(p, evalEntry(p, list[i]), w, hh, { bg: p.bg, canvas });
@@ -264,8 +274,51 @@ async function exportMp4(entries, w, hh, fps, name, setP, isCancelled) {
   await enc.flush();
   enc.close();
   if (failure) throw failure;
+  if (audio) {
+    setP(1, 'Adding sound…');
+    await encodeAudio(audio, muxer);
+  }
   muxer.finalize();
   return { blob: new Blob([muxer.target.buffer], { type: 'video/mp4' }), name: `${name}.mp4` };
+}
+
+// Mixes the project's sound for the exported span; null if this browser can't encode AAC.
+async function prepareAudio(p, t0, duration) {
+  if (typeof AudioEncoder !== 'function') {
+    toast('This browser can’t add sound to MP4 — the video is exported silent', { kind: 'warn', ms: 4000 });
+    return null;
+  }
+  const sampleRate = 48000;
+  const config = { codec: 'mp4a.40.2', sampleRate, numberOfChannels: 2, bitrate: 160000 };
+  try {
+    if (!(await AudioEncoder.isConfigSupported(config)).supported) throw new Error('AAC unsupported');
+  } catch {
+    toast('This browser can’t encode AAC sound — the video is exported silent', { kind: 'warn', ms: 4000 });
+    return null;
+  }
+  const mix = await renderMix(p, t0, duration, sampleRate);
+  return mix ? { mix, config, sampleRate } : null;
+}
+
+async function encodeAudio({ mix, config, sampleRate }, muxer) {
+  let failure = null;
+  const enc = new AudioEncoder({ output: (chunk, meta) => muxer.addAudioChunk(chunk, meta), error: (e) => (failure = e) });
+  enc.configure(config);
+  const L = mix.getChannelData(0), R = mix.numberOfChannels > 1 ? mix.getChannelData(1) : L;
+  const N = 1024;
+  for (let i = 0; i < mix.length; i += N) {
+    const n = Math.min(N, mix.length - i);
+    const data = new Float32Array(n * 2);
+    data.set(L.subarray(i, i + n), 0);
+    data.set(R.subarray(i, i + n), n);
+    const ad = new AudioData({ format: 'f32-planar', sampleRate, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((i / sampleRate) * 1e6), data });
+    enc.encode(ad);
+    ad.close();
+    if (enc.encodeQueueSize > 32) await new Promise((r) => setTimeout(r, 1));
+  }
+  await enc.flush();
+  enc.close();
+  if (failure) throw failure;
 }
 
 // Fallback for browsers without WebCodecs: real-time capture with MediaRecorder.

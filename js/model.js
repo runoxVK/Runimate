@@ -18,6 +18,7 @@
 import { IDENT_XF, uid } from './geom.js';
 import { PRESETS, rigFromPreset } from './presets.js';
 import { defaultPose } from './rig.js';
+import { detachChildren } from './join.js';
 
 export const FORMAT = 'runimate';
 export const VERSION = 1;
@@ -32,7 +33,7 @@ export function newProject({ name = 'Untitled animation', width = 1280, height =
   const p = {
     format: FORMAT, version: VERSION, id: uid('p'), name,
     width, height, fps, bg, loop: true,
-    layers: [], frames: [newFrame()],
+    layers: [], frames: [newFrame()], sounds: [],
   };
   if (starter) {
     const preset = PRESETS.find((x) => x.id === 'stickman');
@@ -90,6 +91,7 @@ export function addImageLayer(p, src, w, h, name = 'Image', aboveId) {
 }
 
 export function removeLayer(p, id) {
+  detachChildren(p, id);
   p.layers = p.layers.filter((l) => l.id !== id);
   for (const f of p.frames) {
     delete f.poses[id];
@@ -111,7 +113,12 @@ export function setStrokes(layer, frame, arr) {
 
 export const getXf = (frame, id) => frame.xf[id] || IDENT_XF;
 
-export const clonePose = (q) => ({ ...q, a: { ...q.a }, l: { ...q.l } });
+export function clonePose(q) {
+  const c = { ...q, a: { ...q.a }, l: { ...q.l } };
+  if (q.c) c.c = { ...q.c };
+  if (q.o) c.o = { ...q.o };
+  return c;
+}
 const mapObj = (o, fn) => {
   const out = {};
   for (const k in o) out[k] = fn(o[k]);
@@ -125,6 +132,7 @@ export function cloneLayer(l) {
   if (l.rig) c.rig = { nodes: l.rig.nodes.map(cloneNode) };
   if (l.strokes) c.strokes = l.strokes.slice();
   if (l.pv) c.pv = l.pv.slice();
+  if (l.join) c.join = { ...l.join };
   return c;
 }
 export function cloneFrame(f) {
@@ -134,7 +142,7 @@ export function cloneFrame(f) {
 }
 // Structural clone that shares immutable stroke objects (cheap enough for undo).
 export function cloneProject(p) {
-  return { ...p, layers: p.layers.map(cloneLayer), frames: p.frames.map(cloneFrame) };
+  return { ...p, layers: p.layers.map(cloneLayer), frames: p.frames.map(cloneFrame), sounds: (p.sounds || []).map((s) => ({ ...s })) };
 }
 export const deepClone = (v) => (typeof structuredClone === 'function' ? structuredClone(v) : JSON.parse(JSON.stringify(v)));
 
@@ -158,6 +166,7 @@ export function validateProject(data) {
   p.fps = Math.min(60, Math.max(1, +p.fps || 12));
   p.bg ||= '#ffffff';
   p.loop = p.loop !== false;
+  p.sounds = Array.isArray(p.sounds) ? p.sounds : [];
   for (const l of p.layers) {
     l.visible = l.visible !== false;
     l.locked = !!l.locked;

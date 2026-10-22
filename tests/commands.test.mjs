@@ -11,7 +11,7 @@ after(() => app?.close());
 test('every command runs in every selection state', async () => {
   const errors = await app.run(async (m) => {
     const skipGroups = new Set(['File']);
-    const skip = new Set(['palette', 'help', 'save-asset', 'projects', 'import-image']);
+    const skip = new Set(['palette', 'help', 'save-asset', 'projects', 'import-image', 'sound-import']);
     const errors = [];
     const fig = () => m.app.project.layers.find((l) => l.kind === 'figure');
     const draw = () => m.app.project.layers.find((l) => l.kind === 'draw');

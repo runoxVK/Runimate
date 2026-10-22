@@ -10,6 +10,7 @@ import { initAutosave, saveLocal } from './projects.js';
 import { loadClipboard } from './actions.js';
 import { loadProjectRecord, getLastProject, requestPersistence } from './storage.js';
 import { toast } from './ui.js';
+import { initFolder } from './folder.js';
 
 async function boot() {
   loadPrefs();
@@ -20,6 +21,7 @@ async function boot() {
   initPanels(document.getElementById('panel'));
   initKeys();
   initAutosave();
+  await initFolder();
   onChange((f) => {
     if (!(f.size === 1 && (f.has('saved') || f.has('assets') || f.has('panel')))) requestRender();
     if (f.has('panel')) setTimeout(requestRender, 220);

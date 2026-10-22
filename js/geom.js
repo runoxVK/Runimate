@@ -93,6 +93,17 @@ export function boxTransform(b, m) {
 
 export const round2 = (v) => Math.round(v * 100) / 100;
 
+const hexRGB = (h) => {
+  const v = parseInt(String(h).replace('#', '').padEnd(6, '0').slice(0, 6), 16) || 0;
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+};
+export function lerpColor(a, b, t) {
+  if (a === b || t <= 0) return a;
+  if (t >= 1) return b;
+  const x = hexRGB(a), y = hexRGB(b);
+  return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+
 export function uid(prefix = '') {
   return prefix + Math.random().toString(36).slice(2, 9) + (Date.now() % 1e6).toString(36);
 }

@@ -5,6 +5,7 @@ import { computeWorld, boneMatrix } from './rig.js';
 import { drawStrokes } from './brush.js';
 import { getStrokes } from './model.js';
 import { camMatrix } from './camera.js';
+import { resolvePoses } from './join.js';
 
 const images = new Map();
 export let onImageLoad = () => {};
@@ -39,9 +40,14 @@ export function drawFigure(ctx, layer, pose) {
   const world = computeWorld(rig, pose);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  const base = ctx.globalAlpha;
   for (const n of rig.nodes) {
+    // Per-frame joint opacity (the whole-figure fade is composited by renderScene).
+    const a = pose.o?.[n.id] ?? 1;
+    if (a <= 0) continue;
+    ctx.globalAlpha = base * Math.min(1, a);
     const w = world.get(n.id);
-    if (!w.root) drawSegment(ctx, n, w, pose.s);
+    if (!w.root) drawSegment(ctx, n, w, pose.s, pose.c?.[n.id] ?? n.color);
     if (n.art && n.art.strokes.length) {
       ctx.save();
       tf(ctx, boneMatrix(w, pose));
@@ -49,12 +55,13 @@ export function drawFigure(ctx, layer, pose) {
       ctx.restore();
     }
   }
+  ctx.globalAlpha = base;
   return world;
 }
 
-function drawSegment(ctx, n, w, s) {
+function drawSegment(ctx, n, w, s, color) {
   const th = Math.max(0.5, n.thick * s);
-  ctx.strokeStyle = ctx.fillStyle = n.color;
+  ctx.strokeStyle = ctx.fillStyle = color;
   ctx.lineWidth = th;
   switch (n.shape) {
     case 'line':
@@ -101,9 +108,10 @@ export function layerMatrix(layer, xf) {
   return xfMatrix(xf || IDENT_XF, layer.pv);
 }
 
-export function drawLayer(ctx, layer, st) {
+// `world` is resolvePoses(p, st); joined figures are drawn at their resolved position.
+export function drawLayer(ctx, layer, st, world) {
   if (layer.kind === 'figure') {
-    const pose = st.poses[layer.id];
+    const pose = world ? world[layer.id] : st.poses[layer.id];
     if (pose) drawFigure(ctx, layer, pose);
   } else if (layer.kind === 'draw') {
     const strokes = getStrokes(layer, st.frame);
@@ -128,15 +136,17 @@ export function renderScene(ctx, p, st, opts = {}) {
     ctx.fillStyle = opts.bg;
     ctx.fillRect(0, 0, p.width, p.height);
   }
+  const world = resolvePoses(p, st);
   for (const layer of p.layers) {
     if (!layer.visible) continue;
     if (opts.filter && !opts.filter(layer)) continue;
-    const op = layer.opacity ?? 1;
+    let op = layer.opacity ?? 1;
+    if (layer.kind === 'figure') op *= world[layer.id]?.op ?? 1;
     if (op <= 0) continue;
     if (op >= 1 || layer.kind === 'image') {
       const a = ctx.globalAlpha;
       ctx.globalAlpha = a * op;
-      drawLayer(ctx, layer, st);
+      drawLayer(ctx, layer, st, world);
       ctx.globalAlpha = a;
       continue;
     }
@@ -146,7 +156,7 @@ export function renderScene(ctx, p, st, opts = {}) {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, c.width, c.height);
     g.setTransform(ctx.getTransform());
-    drawLayer(g, layer, st);
+    drawLayer(g, layer, st, world);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha *= op;

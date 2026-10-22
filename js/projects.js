@@ -7,6 +7,8 @@ import { saveProjectRecord, listProjects, loadProjectRecord, del, setLastProject
 import { saveProjectFile, openProjectFile, projectBlob, downloadBlob, safeName, EXT } from './fileio.js';
 import { h, icon, ibtn, openDialog, toast, confirmDialog, promptDialog, popupMenu } from './ui.js';
 import { fit } from './stage.js';
+import { folderSupported, folderName, chooseFolder, forgetFolder, reconnectFolder, writeProjectToFolder, listFolder, openFromFolder, folderHasLibrary, readFolderFile, LIBRARY_FILE } from './folder.js';
+import { importLibraryFile, refreshAssets } from './library.js';
 
 let timer = 0;
 let inflight = null;
@@ -23,7 +25,16 @@ export async function saveLocal() {
   const rev = app.rev;
   if (inflight) await inflight;
   inflight = saveProjectRecord(p, projectThumb(p))
-    .then(() => {
+    .then(async () => {
+      if (app.folder === 'ok') {
+        try {
+          app.savedFile = await writeProjectToFolder(p);
+        } catch (e) {
+          console.warn('Folder save failed', e);
+          app.savedFile = null;
+          toast(`Couldn’t save into “${folderName()}”: ${e.message || e}`, { kind: 'error', ms: 4000 });
+        }
+      }
       setLastProject(p.id);
       if (P() === p || P()?.id === p.id) app.savedRev = Math.max(app.savedRev, rev);
       changed('saved');
@@ -57,7 +68,9 @@ export async function save() {
     } catch (e) {
       toast(`Couldn’t write the file: ${e.message}`, { kind: 'error' });
     }
-  } else toast('Saved in this browser · Ctrl+Shift+S saves a file', { ms: 2200 });
+  } else if (app.folder === 'ok' && app.savedFile) toast(`Saved to ${folderName()}/${app.savedFile}`, { ms: 2200 });
+  else if (app.folder === 'reconnect') toast('Saved in this browser — reconnect your projects folder to save files there', { ms: 3000 });
+  else toast('Saved in this browser · Ctrl+Shift+S saves a file', { ms: 2200 });
 }
 
 export async function saveAs() {
@@ -149,6 +162,7 @@ export function newProjectDialog() {
 
 export async function projectsDialog() {
   const grid = h('div', { class: 'proj-grid' });
+  const folderBox = h('div', { class: 'folder-box' });
   const { close } = openDialog({
     title: 'Your animations',
     wide: true,
@@ -157,9 +171,66 @@ export async function projectsDialog() {
         h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); newProjectDialog(); } }, icon('new', 16), ' New animation'),
         h('button', { class: 'btn', type: 'button', onclick: () => { close(); openFile(); } }, icon('folder', 16), ` Open ${EXT} file…`),
       ),
-      h('p', { class: 'muted small' }, 'Animations autosave in this browser. Save a file now and then as a backup, or to move work between your PC and iPad.'),
+      folderBox,
+      h('h3', { class: 'sec-title' }, 'Saved in this browser'),
       grid),
   });
+
+  // Projects folder on disk.
+  async function fillFolder() {
+    const sup = folderSupported();
+    const parts = [];
+    if (!sup) {
+      parts.push(h('p', { class: 'muted small' }, 'Animations autosave in this browser. Saving straight into a folder needs Chrome or Edge on a computer — on iPad use Save to file (Share → Save to Files) as your backup.'));
+    } else if (app.folder === 'none') {
+      parts.push(
+        h('p', { class: 'muted small' }, 'Pick a folder on this computer and every animation autosaves there as a .runimate file (plus your library). This browser keeps a copy too.'),
+        h('button', { class: 'btn primary', type: 'button', onclick: () => connect() }, icon('folder', 16), ' Choose a projects folder…'));
+    } else if (app.folder === 'reconnect') {
+      parts.push(
+        h('p', {}, `Your projects folder “${folderName()}” needs permission again after a restart.`),
+        h('div', { class: 'row gap' },
+          h('button', { class: 'btn primary', type: 'button', onclick: async () => { await reconnectFolder(); if (app.folder === 'ok') await saveLocal(); fillFolder(); } }, icon('folder', 16), ' Reconnect'),
+          h('button', { class: 'btn', type: 'button', onclick: async () => { await forgetFolder(); fillFolder(); } }, 'Stop using it')));
+    } else {
+      const files = await listFolder().catch(() => []);
+      parts.push(
+        h('div', { class: 'row between wrap' },
+          h('div', { class: 'title' }, icon('folder', 18), h('b', {}, folderName()), h('span', { class: 'pill' }, 'autosaving here')),
+          h('div', { class: 'row gap' },
+            h('button', { class: 'btn', type: 'button', onclick: () => connect() }, 'Change…'),
+            h('button', { class: 'btn', type: 'button', onclick: async () => { await forgetFolder(); fillFolder(); } }, 'Stop using it'))),
+        files.length
+          ? h('div', { class: 'file-list' }, files.map((f) => h('button', {
+            type: 'button', class: `file-row ${f.name === P()?.file ? 'current' : ''}`,
+            onclick: async () => {
+              try {
+                const proj = await openFromFolder(f.name);
+                close();
+                if (proj.id !== P()?.id) await switchTo(proj);
+              } catch (e) {
+                toast(`Couldn’t open ${f.name}: ${e.message}`, { kind: 'error' });
+              }
+            },
+          }, icon('save', 15), h('span', { class: 'grow ell' }, f.name.replace(/\.runimate$/i, '')), h('span', { class: 'muted small' }, new Date(f.modified).toLocaleString()))))
+          : h('p', { class: 'muted small' }, 'No .runimate files in this folder yet — the current animation will be saved here automatically.'));
+    }
+    folderBox.replaceChildren(...parts);
+  }
+  async function connect() {
+    try {
+      await chooseFolder();
+    } catch (e) {
+      if (e?.name !== 'AbortError') toast(`Couldn’t use that folder: ${e.message}`, { kind: 'error' });
+      return;
+    }
+    // Merge a library that's already in the folder, then save everything into it.
+    if (await folderHasLibrary()) await importLibraryFile(await readFolderFile(LIBRARY_FILE), { merge: true });
+    else await refreshAssets(true);
+    await saveLocal();
+    toast(`Animations now autosave to “${folderName()}”`);
+    fillFolder();
+  }
 
   async function fill() {
     const list = await listProjects();
@@ -207,5 +278,6 @@ export async function projectsDialog() {
     grid.querySelector('.proj-open')?.focus();
   }
   if (app.rev !== app.savedRev) await saveLocal();
+  fillFolder();
   fill();
 }

@@ -9,6 +9,7 @@ import { save, saveAs, openFile, newProjectDialog, projectsDialog } from './proj
 import { saveSelectionToLibrary, importLibrary, exportLibrary } from './library.js';
 import { h, icon, openDialog, isTyping, toast, isMac } from './ui.js';
 import { toggleRuler, setRulerType, ruler } from './ruler.js';
+import { importSound } from './audio.js';
 
 export const commands = [];
 const byId = new Map();
@@ -28,6 +29,7 @@ cmd('projects', 'File', 'Your animations…', 'ctrl+o', projectsDialog);
 cmd('open-file', 'File', 'Open project file…', 'ctrl+shift+o', openFile);
 cmd('save', 'File', 'Save', 'ctrl+s', save);
 cmd('save-as', 'File', 'Save to file…', 'ctrl+shift+s', saveAs);
+cmd('folder', 'File', 'Projects folder on this computer…', null, projectsDialog);
 cmd('export', 'File', 'Export (GIF, MP4, PNG)…', 'ctrl+e', () => openExport());
 cmd('import-image', 'File', 'Import image (for tracing)…', 'ctrl+alt+i', A.importImage);
 cmd('lib-import', 'File', 'Import library file…', null, importLibrary);
@@ -77,6 +79,8 @@ cmd('paste-pose', 'Figure', 'Paste pose', 'ctrl+shift+v', A.pastePose);
 cmd('reset-pose', 'Figure', 'Reset pose to default', null, A.resetPose);
 cmd('bone-draw', 'Figure', 'Draw on selected bone', 'shift+b', A.startBoneDraw);
 cmd('attach', 'Figure', 'Attach selected strokes to a bone', 'shift+t', A.startAttach);
+cmd('join', 'Figure', 'Attach figure to another figure’s joint', 'j', A.startJoin);
+cmd('detach', 'Figure', 'Detach figure from its joint', 'shift+j', A.detachSelected);
 
 // ---- Frames
 cmd('new-frame', 'Frames', 'New frame (copies poses)', 'n', () => A.newFrame(false));
@@ -99,6 +103,7 @@ cmd('tween-toggle', 'Frames', 'Toggle tween / hold for frame', 'y', () => A.setF
 // ---- Playback & view
 cmd('play', 'Playback', 'Play / pause', 'space', togglePlay);
 cmd('loop', 'Playback', 'Toggle loop', 'shift+l', () => { checkpoint(); P().loop = !P().loop; changed('project'); toast(P().loop ? 'Loop on' : 'Loop off', { ms: 900 }); });
+cmd('sound-import', 'Playback', 'Import sound…', null, () => importSound());
 cmd('onion', 'Playback', 'Toggle onion skin', 'o', () => { app.onion.on = !app.onion.on; changed('prefs', 'content'); toast(app.onion.on ? 'Onion skin on' : 'Onion skin off', { ms: 900 }); });
 cmd('fps-up', 'Playback', 'Faster (FPS +1)', 'shift+]', () => setFps(P().fps + 1));
 cmd('fps-down', 'Playback', 'Slower (FPS −1)', 'shift+[', () => setFps(P().fps - 1));
@@ -129,7 +134,7 @@ function rulerToast() {
 function escape() {
   if (app.playing) return stopPlay();
   if (app.boneDraw) return A.endBoneDraw();
-  if (app.attachPending) { app.attachPending = false; changed('sel'); return; }
+  if (app.attachPending || app.joinPending) { app.attachPending = app.joinPending = false; changed('sel'); return; }
   if (app.frameSel) { app.frameSel = null; changed('frames'); }
   if (app.sel) select(null);
   stageCanvas()?.focus();

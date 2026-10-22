@@ -23,15 +23,17 @@ export const app = {
   preview: null, // expanded-timeline entry being scrubbed, or null
   boneDraw: null, // { id, node } while drawing art onto a bone
   attachPending: false, // waiting for a bone click to attach selected strokes
+  joinPending: false, // waiting for a joint click to join the selected figure
   ruler: null, // drawing guide, see ruler.js
   camView: true, // play / scrub through the animated camera
+  colorScope: 'all', // joint colour edits: 'all' frames or 'frame' only
   clipboard: null,
   fileHandle: null,
   rev: 0,
   savedRev: 0,
 };
 
-const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler', 'camView'];
+const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler', 'camView', 'colorScope'];
 export function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem('runimate.prefs') || '{}');
@@ -76,6 +78,7 @@ export function select(sel) {
   app.sel = sel;
   if (sel) app.activeLayer = sel.id;
   app.attachPending = false;
+  app.joinPending = false;
   changed('sel');
 }
 

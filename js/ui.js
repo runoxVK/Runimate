@@ -83,6 +83,7 @@ const P = {
   new: '<path d="M6 3h8l5 5v13H6zM14 3v5h5M12 11v6M9 14h6"/>',
   pen: '<path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3"/>',
   scissors: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5L20 19M8.5 15.5L20 5"/>',
+  sound: '<path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
   camera: '<rect x="2" y="7" width="13" height="10" rx="2"/><path d="M15 11l6-3.5v9L15 13z"/>',
   ruler: '<path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M10 9.5l1.5 1.5M12.5 7l2 2"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9.5 7L4 17h5.5zM14.5 7L20 17h-5.5z"/>',
@@ -163,6 +164,39 @@ export function confirmDialog(message, { title = 'Are you sure?', ok = 'OK', dan
       onClose: (v) => resolve(!!v),
     });
     dlg.querySelector('.dlg-foot .btn:last-child').focus();
+  });
+}
+
+// Small form: fields = [{ key, label, type: 'text' | 'number' | 'checkbox', value, min, max }].
+// Resolves to { key: value } or null when cancelled.
+export function formDialog(title, fields, { ok = 'OK', note = '' } = {}) {
+  return new Promise((resolve) => {
+    let result = null;
+    const inputs = fields.map((f) => {
+      const type = f.type || 'text';
+      const input = h('input', { type, class: type === 'number' ? 'num' : type === 'text' ? 'text' : '', min: f.min, max: f.max, 'aria-label': f.label });
+      if (type === 'checkbox') input.checked = !!f.value;
+      else input.value = f.value ?? '';
+      return [f, input];
+    });
+    const read = () => Object.fromEntries(inputs.map(([f, i]) => [f.key, i.type === 'checkbox' ? i.checked : i.type === 'number' ? Math.max(f.min ?? -Infinity, Math.min(f.max ?? Infinity, +i.value || f.min || 0)) : i.value.trim()]));
+    const body = h('div', { class: 'form' },
+      note ? h('p', { class: 'muted small' }, note) : null,
+      inputs.map(([f, i]) => (i.type === 'checkbox' ? h('label', { class: 'field check' }, i, h('span', {}, f.label)) : h('label', { class: `field ${i.type === 'text' ? 'col' : ''}` }, h('span', {}, f.label), i))));
+    const { close } = openDialog({
+      title,
+      body,
+      actions: [{ label: 'Cancel', value: null }, { label: ok, primary: true, run: (c) => { result = read(); c(result); } }],
+      onClose: () => resolve(result),
+    });
+    body.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.type !== 'checkbox') {
+        result = read();
+        close(result);
+      }
+    });
+    inputs[0]?.[1].focus();
+    inputs[0]?.[1].select?.();
   });
 }
 

@@ -4,14 +4,15 @@ import {
   layerById, layerIndex, getStrokes, setStrokes, addFigureLayer, addDrawLayer, addImageLayer, removeLayer,
   makeFrameFrom, deepClone, uid, cloneLayer, uniqueName, getXf,
 } from './model.js';
-import { addChildNode, deleteNode, moveNodeOrder, flipPose, nodeById, rootNode, computeWorld, bakeDefaults, figureBounds } from './rig.js';
+import { addChildNode, deleteNode, moveNodeOrder, flipPose, nodeById, rootNode, computeWorld, bakeDefaults, figureBounds, descendants } from './rig.js';
 import { strokesBox, transformStroke } from './brush.js';
 import { layerMatrix } from './render.js';
-import { viewCenter, ensureXf, detachArt, startAttach } from './stage.js';
+import { viewCenter, ensureXf, detachArt, startAttach, startJoin } from './stage.js';
 import { inv, chain, translate, scale, boxValid, DEG } from './geom.js';
 import { toast, promptDialog } from './ui.js';
 import { PRESETS, rigFromPreset } from './presets.js';
 import { defaultCam } from './camera.js';
+import { resolvePoses, detachLayer, detachChildren, setJoinScale } from './join.js';
 import { pickFile, loadImageFile } from './fileio.js';
 
 export function resetCamera() {
@@ -136,7 +137,8 @@ export function copy(cut = false) {
     const m = stageMat(layer);
     setClipboard({ type: 'strokes', strokes: s.strokes.map((x) => transformStroke(x, m)), src: { layer: layer.id, frame: curFrame().id } });
   } else if (s.type === 'figure') {
-    setClipboard({ type: 'figure', layer: deepClone(cloneLayer(layer)), pose: deepClone(curFrame().poses[layer.id]), src: { layer: layer.id } });
+    const world = resolvePoses(P(), curFrame())[layer.id] || curFrame().poses[layer.id];
+    setClipboard({ type: 'figure', layer: deepClone(cloneLayer(layer)), pose: deepClone(world), src: { layer: layer.id } });
   } else if (s.type === 'layer') {
     const c = { type: 'layer', layer: deepClone(cloneLayer(layer)), xf: deepClone(getXf(curFrame(), layer.id)), src: { layer: layer.id } };
     if (layer.kind === 'draw' && layer.mode === 'frame') c.strokes = deepClone(getStrokes(layer, curFrame()));
@@ -169,6 +171,7 @@ export function paste() {
     checkpoint();
     const pose = deepClone(c.pose);
     if (c.src && f.poses[c.src.layer]) { pose.x += 24; pose.y += 24; }
+    // Pasted copies stand on their own (they aren't attached to anything).
     const rig = deepClone(c.layer.rig);
     const layer = addFigureLayer(p, rig, pose, { name: c.layer.name, frameIndex: app.cur, aboveId: app.activeLayer });
     changed('layers', 'content');
@@ -335,6 +338,7 @@ export function removeNode() {
   const n = fs.s.node && nodeById(fs.layer.rig, fs.s.node);
   if (!n || !n.parent) return toast('Select a joint (not the main node) to delete it');
   checkpoint();
+  detachChildren(P(), fs.layer.id, descendants(fs.layer.rig, n.id));
   deleteNode(fs.layer.rig, n.id);
   fs.s.node = n.parent;
   changed('content', 'sel');
@@ -392,7 +396,24 @@ export function detachSelectedArt() {
   const fs = figSel();
   if (fs && fs.s.node) detachArt(fs.layer, fs.s.node);
 }
-export { startAttach };
+export { startAttach, startJoin };
+
+export function detachSelected() {
+  const fs = figSel();
+  if (!fs) return;
+  if (!fs.layer.join) return toast('This figure isn’t attached to anything');
+  checkpoint();
+  detachLayer(P(), fs.layer);
+  changed('content', 'layers', 'sel');
+  toast(`Detached “${fs.layer.name}” — it now moves on its own`);
+}
+export function setJoinScaling(on) {
+  const fs = figSel();
+  if (!fs?.layer.join) return;
+  checkpoint();
+  setJoinScale(P(), fs.layer, on);
+  changed('content');
+}
 
 export function nudgeRotate(deg) {
   const s = app.sel, layer = selLayer();

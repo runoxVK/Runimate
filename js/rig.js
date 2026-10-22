@@ -1,5 +1,5 @@
 // Stick figure math: forward kinematics, posing (rotate / stretch / IK), rig editing.
-import { clamp, normAngle, DEG, chain, translate, rotate, scale, emptyBox, boxAdd, lerp, lerpAngle, uid } from './geom.js';
+import { clamp, normAngle, DEG, chain, translate, rotate, scale, emptyBox, boxAdd, lerp, lerpAngle, lerpColor, uid } from './geom.js';
 
 export const SHAPES = [
   { id: 'line', label: 'Line' },
@@ -110,6 +110,22 @@ export function lerpPose(rig, A, B, t) {
     out.a[n.id] = lerpAngle(A.a[n.id] ?? n.ang, B.a[n.id] ?? n.ang, t);
     out.l[n.id] = lerp(A.l[n.id] ?? n.len, B.l[n.id] ?? n.len, t);
   }
+  // Per-frame colour / opacity overrides and the whole-figure fade.
+  if (A.c || B.c) {
+    out.c = {};
+    for (const n of rig.nodes) {
+      const ca = A.c?.[n.id] ?? n.color, cb = B.c?.[n.id] ?? n.color;
+      if (ca !== n.color || cb !== n.color) out.c[n.id] = lerpColor(ca, cb, t);
+    }
+  }
+  if (A.o || B.o) {
+    out.o = {};
+    for (const n of rig.nodes) {
+      const oa = A.o?.[n.id] ?? 1, ob = B.o?.[n.id] ?? 1;
+      if (oa !== 1 || ob !== 1) out.o[n.id] = lerp(oa, ob, t);
+    }
+  }
+  if (A.op != null || B.op != null) out.op = lerp(A.op ?? 1, B.op ?? 1, t);
   return out;
 }
 

@@ -4,7 +4,7 @@ import { layerById, getStrokes, setStrokes, getXf } from './model.js';
 import { SHAPES, nodeById } from './rig.js';
 import * as A from './actions.js';
 import { ensureXf, ensurePivot, fit } from './stage.js';
-import { saveSelectionToLibrary, builtinAssets, assets, insertAsset, renameAsset, deleteAsset, exportAsset, importLibrary, exportLibrary, refreshAssets } from './library.js';
+import { saveSelectionToLibrary, builtinAssets, assets, insertAsset, renameAsset, deleteAsset, exportAsset, importLibrary, exportLibrary, refreshAssets, saveMotion } from './library.js';
 import { projectForm } from './projects.js';
 import { h, icon, ibtn, popupMenu } from './ui.js';
 import { prettyKey, keysFor } from './commands.js';
@@ -187,28 +187,43 @@ function figureProps(layer) {
   const parts = [];
   parts.push(section(null,
     h('div', { class: 'row between' }, h('div', { class: 'title' }, icon('figure', 18), h('b', {}, layer.name)), ibtn('pen', 'Rename', () => A.renameLayer(layer.id), 'ghost mini')),
+    layer.join ? h('p', { class: 'muted small' }, 'X / Y / Turn are offsets from the joint it’s attached to.') : null,
     h('div', { class: 'grid2' },
       num('X', 'fx', () => pose().x, (v) => (pose().x = v)),
       num('Y', 'fy', () => pose().y, (v) => (pose().y = v)),
-      num('Turn', 'fr', () => (pose().r * 180) / Math.PI + 90, (v) => (pose().r = (v - 90) * DEG), { step: 1, suffix: '°' }),
+      num('Turn', 'fr', () => (pose().r * 180) / Math.PI + (layer.join ? 0 : 90), (v) => (pose().r = (v - (layer.join ? 0 : 90)) * DEG), { step: 1, suffix: '°' }),
       num('Size', 'fs', () => pose().s * 100, (v) => (pose().s = Math.max(5, v) / 100), { min: 5, max: 2000, step: 5, suffix: '%' })),
-    range('Opacity', 'lop', () => layer.opacity, (v) => (layer.opacity = v), { fmt: (v) => `${Math.round(v * 100)}%` }),
+    range('Fade (this frame, tweens)', 'fop', () => pose().op ?? 1, (v) => { if (v >= 1) delete pose().op; else pose().op = v; }, { fmt: (v) => `${Math.round(v * 100)}%` }),
+    range('Layer opacity (all frames)', 'lop', () => layer.opacity, (v) => (layer.opacity = v), { fmt: (v) => `${Math.round(v * 100)}%` }),
     row(btn('Flip', 'flip', A.flipSelection, '', tip('Flip horizontally', 'flip')), btn('Copy pose', 'copy', A.copyPose, '', tip('Copy pose', 'copy-pose')), btn('Paste pose', 'paste', A.pastePose, '', tip('Paste pose', 'paste-pose'))),
     row(btn('Reset pose', 'rotate', A.resetPose), btn('Save to library', 'library', saveSelectionToLibrary, 'accent', tip('Save to library', 'save-asset'))),
+    row(btn('Save motion…', 'frames', saveMotion, '', 'Save this figure’s animation (a walk cycle, a punch…) to reuse on other figures')),
   ));
+  parts.push(joinSection(layer));
 
   if (node) {
     const isRoot = !node.parent;
     const nd = () => nodeById(layer.rig, s.node);
+    const jointColor = () => (app.colorScope === 'frame' ? pose().c?.[s.node] : null) ?? nd().color;
+    const setJointColor = (v) => {
+      if (app.colorScope === 'frame') (pose().c ||= {})[s.node] = v;
+      else nd().color = v;
+    };
     const joint = section(isRoot ? 'Main node' : 'Selected joint',
       isRoot ? h('p', { class: 'muted small' }, 'The main node moves the whole figure. Add joints to it to build new limbs.') : null,
       !isRoot ? seg('Segment shape (all frames)', SHAPES.map((x) => [x.id, x.label]), () => nd().shape, (v) => (nd().shape = v)) : null,
       !isRoot ? range('Thickness', 'nth', () => nd().thick, (v) => (nd().thick = v), { min: 1, max: 80, step: 1, fmt: (v) => `${v}px` }) : null,
-      !isRoot ? h('div', { class: 'row gap wrap' }, color('Color', 'ncol', () => nd().color, (v) => (nd().color = v)), swatchRow((c) => edit(null, () => (nd().color = c)))) : null,
+      !isRoot ? seg('Colour changes apply to', [['all', 'All frames'], ['frame', 'This frame (tweens)']], () => app.colorScope, (v) => { app.colorScope = v; changed('pref-save', 'panel'); }) : null,
+      !isRoot ? h('div', { class: 'row gap wrap' }, color('Color', 'ncol', () => jointColor(), (v) => setJointColor(v)), swatchRow((c) => edit(null, () => setJointColor(c)))) : null,
+      !isRoot && pose().c?.[node.id] ? row(btn('Use the normal colour on this frame', 'rotate', () => edit(null, () => { delete pose().c[node.id]; if (!Object.keys(pose().c).length) delete pose().c; }))) : null,
+      !isRoot ? range('Opacity (this frame, tweens)', 'nop', () => pose().o?.[node.id] ?? 1, (v) => {
+        const q = pose();
+        if (v >= 1) { if (q.o) { delete q.o[node.id]; if (!Object.keys(q.o).length) delete q.o; } } else (q.o ||= {})[node.id] = v;
+      }, { fmt: (v) => (v <= 0 ? 'hidden' : `${Math.round(v * 100)}%`) }) : null,
       !isRoot ? h('div', { class: 'grid2' },
         num('Length', 'nlen', () => pose().l[node.id] ?? node.len, (v) => (pose().l[node.id] = Math.max(1, v)), { min: 1, max: 5000 }),
         num('Angle', 'nang', () => ((pose().a[node.id] ?? node.ang) * 180) / Math.PI, (v) => (pose().a[node.id] = v * DEG), { step: 1, suffix: '°' })) : null,
-      !isRoot ? h('p', { class: 'muted small' }, 'Length and angle are per frame (they tween). Shape, thickness and colour apply to every frame.') : null,
+      !isRoot ? h('p', { class: 'muted small' }, 'Length, angle, opacity and “this frame” colours are per frame and tween. Shape and thickness apply to every frame.') : null,
       row(
         btn('Add joint', 'plus', A.addNode, '', tip('Add a joint here', 'add-node')),
         !isRoot ? btn('Delete joint', 'trash', A.removeNode, 'danger', tip('Delete joint', 'delete-node')) : null),
@@ -231,6 +246,29 @@ function figureProps(layer) {
     row(btn('Set as default pose', 'check', A.setDefaultPose, '', 'Make this pose the default used by “Reset pose” and new copies'),
       btn('Remove from here on', 'trash', A.deleteSelection, 'danger', 'Remove the figure from this frame and every later frame'))));
   return h('div', {}, parts);
+}
+
+const JOINT_NAMES = {
+  root: 'main node', head: 'head', neck: 'neck', torso: 'chest', spine1: 'hips', spine2: 'belly',
+  armL1: 'front elbow', armL2: 'front hand', armR1: 'back elbow', armR2: 'back hand', handL: 'front hand', handR: 'back hand',
+  legL1: 'front knee', legL2: 'front ankle', footL: 'front foot', legR1: 'back knee', legR2: 'back ankle', footR: 'back foot',
+  grip: 'grip', blade: 'blade tip', tail: 'tail', snout: 'snout',
+};
+export const jointName = (id) => JOINT_NAMES[id] || 'joint';
+
+function joinSection(layer) {
+  const j = layer.join;
+  const parent = j && layerById(P(), j.parent);
+  if (j && parent) {
+    return section('Attached to a figure',
+      h('p', {}, 'Follows ', h('b', {}, parent.name), `’s ${jointName(j.node)} on every frame.`),
+      check(`Scale with ${parent.name}`, 'jsc', () => layer.join?.scale !== false, (v) => A.setJoinScaling(v)),
+      row(btn('Detach', 'scissors', A.detachSelected, '', tip('Detach', 'detach'))));
+  }
+  return section('Attach to a figure',
+    h('p', { class: 'muted small' }, 'Make this figure follow another figure’s joint — a sword in a hand, a hat on a head, a rider on a horse.'),
+    row(btn('Attach to a joint…', 'bone', A.startJoin, '', tip('Attach to a joint', 'join'))),
+    app.joinPending ? h('p', { class: 'callout' }, 'Tap the joint on the other figure. Esc cancels.') : null);
 }
 
 function swatchRow(pick) {
@@ -312,7 +350,7 @@ function layersTab() {
           e.stopPropagation();
         },
         'data-layer': l.id,
-      }, icon(kindIcon, 16), h('span', { class: 'grow ell' }, l.name), absent ? h('span', { class: 'tag' }, 'not in frame') : h('span', { class: 'tag' }, kindName)),
+      }, icon(kindIcon, 16), h('span', { class: 'grow ell' }, l.name), absent ? h('span', { class: 'tag' }, 'not in frame') : h('span', { class: 'tag' }, l.join ? `↳ ${layerById(p, l.join.parent)?.name || 'joined'}` : kindName)),
       ibtn('dots', `Layer actions for ${l.name}`, (e) => popupMenu(e.currentTarget, [
         { label: 'Rename', icon: 'pen', keys: 'F2', run: () => A.renameLayer(l.id) },
         { label: 'Duplicate', icon: 'copy', run: () => A.duplicateLayer(l.id) },
@@ -369,6 +407,7 @@ function libraryTab() {
     ]), 'mini ghost asset-more'));
   const grid = (list, empty) => list.length ? h('div', { class: 'asset-grid' }, list.map(card)) : h('p', { class: 'muted small' }, empty);
   const figs = assets.filter((a) => a.kind === 'figure' && match(a));
+  const motions = assets.filter((a) => a.kind === 'motion' && match(a));
   const draws = assets.filter((a) => a.kind === 'drawing' && match(a));
   const input = h('input', { type: 'search', class: 'text', placeholder: 'Search library', value: search, 'data-k': 'libsearch', 'aria-label': 'Search library',
     oninput: (e) => { search = e.target.value; render(); } });
@@ -380,10 +419,11 @@ function libraryTab() {
     section('Built-in figures', grid(builtinAssets().filter(match), 'No match')),
     section('My figures', grid(figs, q ? 'No match' : 'Select a figure and press “Save selection” — it keeps its rig, colours and drawn bone art.')),
     section('My drawings', grid(draws, q ? 'No match' : 'Select strokes (lasso) or a drawing layer and press “Save selection”.')),
+    section('My motions', grid(motions, q ? 'No match' : 'Select an animated figure and press “Save motion…” in Properties. Tap a motion here to apply it to the selected figure.')),
   );
 }
 
 export function initLibraryData() {
-  refreshAssets();
+  refreshAssets(false);
 }
 

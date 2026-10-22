@@ -6,8 +6,9 @@ import { entryOfKey, totalFrames, evalKey } from './tween.js';
 import { renderToCanvas } from './render.js';
 import { h, icon, ibtn, popupMenu, popover } from './ui.js';
 import { prettyKey, keysFor } from './commands.js';
+import { importSound, updateSound, removeSound, peaks, preload } from './audio.js';
 
-let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, inbVal, tweenSeg, easeSel;
+let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, inbVal, tweenSeg, easeSel, soundBtn, lane;
 const thumbs = new Map(); // frame id -> { el, canvas, dirty }
 let thumbTimer = 0, staleTimer = 0;
 
@@ -42,6 +43,7 @@ export function initTimeline(el) {
       h('label', { class: 'fps-wrap', title: 'Playback speed in frames per second (Shift+[ / Shift+])' }, fpsInput, h('span', {}, 'fps')),
       loopBtn,
       h('span', { class: 'onion-wrap' }, onionBtn, onionMore),
+      (soundBtn = ibtn('sound', 'Sound — import music / voice, set where it starts', (e) => soundPopover(e.currentTarget), 'toggle')),
     ),
     h('div', { class: 'tl-group frame-props' },
       frameInfo,
@@ -67,7 +69,11 @@ export function initTimeline(el) {
     if (e && !e.u) preview(null);
   });
   readout = h('span', { class: 'readout' });
-  root.append(controls, strip, h('div', { class: 'tl-row tl-scrub' }, scrub, readout));
+  lane = h('canvas', { class: 'sound-lane', 'aria-label': 'Sound waveforms. Drag a clip to move it in time.' });
+  bindLane();
+  root.append(controls, strip, h('div', { class: 'tl-row tl-lane' }, lane, h('span', { class: 'readout lane-label' }, 'Sound')), h('div', { class: 'tl-row tl-scrub' }, scrub, readout));
+  // Redraw on the next frame: toggling the lane inside the observer would loop.
+  new ResizeObserver(() => requestAnimationFrame(drawLane)).observe(lane);
 
   onChange((f) => {
     if (f.has('project') || f.has('frames') || f.has('layers')) rebuild();
@@ -77,7 +83,115 @@ export function initTimeline(el) {
     if (f.has('frame') || f.has('frames') || f.has('project')) updateCurrent();
     if (f.has('playframe') || f.has('play') || f.has('frame') || f.has('frames') || f.has('project')) updatePlayhead();
     if (f.has('prefs') || f.has('project') || f.has('play') || f.has('frames') || f.has('frame')) updateControls();
+    if (f.has('project')) preload();
+    if (['sound', 'project', 'frames', 'playframe', 'frame', 'play'].some((k) => f.has(k))) drawLane();
   });
+}
+
+// ---------------------------------------------------------------- sound
+function soundPopover(anchor) {
+  const body = h('div', { class: 'pop-body sound-pop' });
+  const fill = () => {
+    const p = P(), list = p.sounds || [];
+    body.replaceChildren(...[
+      h('b', {}, 'Sound'),
+      list.length ? null : h('p', { class: 'muted small' }, 'Add music, a voice line or sound effects. They play with the animation, show as a waveform on the timeline, and are included in MP4 exports (GIFs have no sound).'),
+      ...list.map((s) => h('div', { class: 'sound-row' },
+        h('div', { class: 'row between' }, h('span', { class: 'ell' }, icon('sound', 14), ' ', s.name), ibtn('trash', `Remove ${s.name}`, () => { removeSound(s.id); fill(); }, 'mini ghost')),
+        h('div', { class: 'row gap wrap' },
+          h('label', { class: 'field' }, h('span', {}, 'Starts at'), h('input', { type: 'number', class: 'num', step: 0.01, value: s.start.toFixed(2), oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) updateSound(s.id, { start: v }, 'snd-start' + s.id); } }), h('span', { class: 'suffix' }, 's')),
+          h('button', { type: 'button', class: 'btn', title: 'Start this sound on the current frame', onclick: () => { updateSound(s.id, { start: +(entryOfKey(p, app.cur) / p.fps).toFixed(3) }); fill(); } }, 'Start here')),
+        h('div', { class: 'row gap' },
+          h('label', { class: 'field grow' }, h('span', {}, 'Volume'), h('input', { type: 'range', min: 0, max: 1.5, step: 0.05, value: s.vol ?? 1, oninput: (e) => updateSound(s.id, { vol: +e.target.value }, 'snd-vol' + s.id) })),
+          h('label', { class: 'field check' }, h('input', { type: 'checkbox', checked: !!s.mute, onchange: (e) => updateSound(s.id, { mute: e.target.checked }) }), h('span', {}, 'Mute'))))),
+      h('button', { type: 'button', class: 'btn primary', onclick: async () => { await importSound(); fill(); } }, icon('plus', 15), ' Import sound…'),
+      list.length ? h('p', { class: 'muted small' }, 'Tip: drag a clip on the sound lane to slide it; scrub to hear where words land.') : null,
+    ].filter(Boolean));
+  };
+  fill();
+  const m = popover(anchor, body);
+  m.querySelector('input, .btn')?.focus();
+}
+
+const LANE_H = 30;
+function laneGeom() {
+  const p = P();
+  const total = Math.max(1, totalFrames(p));
+  // Line the lane up with the scrubber below it (range thumbs inset ~8px each side).
+  const w = lane.clientWidth, pad = 8;
+  const secs = total / p.fps;
+  return { w, pad, secs, x: (t) => pad + ((w - pad * 2) * t) / secs, t: (x) => ((x - pad) / (w - pad * 2)) * secs };
+}
+
+function drawLane() {
+  if (!lane) return;
+  const p = P();
+  const has = (p?.sounds || []).length > 0;
+  lane.parentElement.classList.toggle('hidden', !has);
+  soundBtn?.classList.toggle('on', has);
+  if (!has) return;
+  const dpr = devicePixelRatio || 1;
+  const W = lane.clientWidth;
+  if (!W) return;
+  lane.width = Math.round(W * dpr);
+  lane.height = Math.round(LANE_H * dpr);
+  const g = lane.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, LANE_H);
+  const geo = laneGeom();
+  p.sounds.forEach((s, idx) => {
+    const x0 = geo.x(s.start), x1 = geo.x(s.start + (s.dur || 0));
+    const y0 = 2, hh = LANE_H - 4;
+    g.globalAlpha = s.mute ? 0.35 : 1;
+    g.fillStyle = idx % 2 ? 'rgba(171,71,188,.28)' : 'rgba(77,163,255,.25)';
+    g.fillRect(x0, y0, Math.max(2, x1 - x0), hh);
+    const pk = peaks(s);
+    if (pk) {
+      g.fillStyle = idx % 2 ? '#d08ce0' : '#8fc4ff';
+      const mid = y0 + hh / 2;
+      for (let x = Math.max(0, Math.floor(x0)); x < Math.min(W, x1); x++) {
+        const t = geo.t(x) - s.start;
+        const v = pk[Math.min(pk.length - 1, Math.max(0, Math.floor(t * 100)))] * (s.vol ?? 1);
+        const a = Math.min(hh / 2, v * hh * 0.5);
+        g.fillRect(x, mid - a, 1, a * 2 || 1);
+      }
+    }
+    g.fillStyle = '#e9eaef';
+    g.font = '11px system-ui, sans-serif';
+    g.fillText(s.name, Math.max(4, x0 + 4), 13);
+  });
+  g.globalAlpha = 1;
+  // Playhead.
+  const i = app.playing ? app.playEntry : app.preview != null ? app.preview : entryOfKey(p, app.cur);
+  const px = geo.x(i / p.fps);
+  g.fillStyle = '#ff5a36';
+  g.fillRect(px - 1, 0, 2, LANE_H);
+}
+
+function bindLane() {
+  let d = null;
+  lane.addEventListener('pointerdown', (e) => {
+    const p = P(), geo = laneGeom();
+    const r = lane.getBoundingClientRect(), x = e.clientX - r.left;
+    const t = geo.t(x);
+    const hit = [...(p.sounds || [])].reverse().find((s) => t >= s.start && t <= s.start + (s.dur || 0));
+    lane.setPointerCapture(e.pointerId);
+    d = hit ? { id: hit.id, x0: x, start: hit.start, moved: false } : { scrub: true };
+    if (!hit) preview(Math.round(t * p.fps));
+  });
+  lane.addEventListener('pointermove', (e) => {
+    if (!d) return;
+    const p = P(), geo = laneGeom();
+    const x = e.clientX - lane.getBoundingClientRect().left;
+    if (d.scrub) return preview(Math.round(geo.t(x) * p.fps));
+    const dt = geo.t(x) - geo.t(d.x0);
+    if (Math.abs(x - d.x0) > 3) d.moved = true;
+    // Snap the start to whole frames.
+    if (d.moved) updateSound(d.id, { start: Math.round((d.start + dt) * p.fps) / p.fps }, 'snd-drag' + d.id);
+  });
+  const end = () => (d = null);
+  lane.addEventListener('pointerup', end);
+  lane.addEventListener('pointercancel', end);
 }
 
 function framesMenu(anchor) {

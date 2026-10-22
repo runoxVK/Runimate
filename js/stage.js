@@ -11,6 +11,7 @@ import { apply, inv, chain, translate, rotate, scale, segDist, pointInPoly, boxT
 import { toast, popupMenu } from './ui.js';
 import { snapper, mirrorMatrix, rulerHandles, dragRulerHandle, drawRuler, ruler } from './ruler.js';
 import { camAt, camUsed, camCorners, camMatrix, ensureCam } from './camera.js';
+import { resolvePoses, localDelta, wouldCycle, joinLayer } from './join.js';
 
 export const view = { z: 1, x: 0, y: 0 };
 let canvas, ctx, dpr = 1, cssW = 0, cssH = 0;
@@ -141,12 +142,16 @@ export function ensurePivot(layer) {
   layer.pv = q;
 }
 
+// World-space poses on the current frame (joined figures resolved onto their parent joint).
+const worldPoses = () => resolvePoses(P(), curFrame());
+const worldPose = (id) => worldPoses()[id];
+
 // Where freehand drawing goes. Returns { layer } or { bone } or null.
 function drawTarget() {
   const p = P();
   if (app.boneDraw) {
     const layer = layerById(p, app.boneDraw.id);
-    const pose = curFrame().poses[app.boneDraw.id];
+    const pose = worldPose(app.boneDraw.id);
     const node = layer && nodeById(layer.rig, app.boneDraw.node);
     if (!layer || !pose || !node) {
       app.boneDraw = null;
@@ -201,17 +206,18 @@ function setTargetStrokes(t, arr) {
 const hitRadius = (type) => (type === 'touch' ? 22 : type === 'pen' ? 13 : 10);
 
 function figureLayers() {
-  const p = P(), f = curFrame();
-  return p.layers.filter((l) => l.kind === 'figure' && l.visible && !l.locked && f.poses[l.id]);
+  const p = P(), wp = worldPoses();
+  return p.layers.filter((l) => l.kind === 'figure' && l.visible && !l.locked && wp[l.id]);
 }
 
 function hitNode(sx, sy, r) {
-  const f = curFrame();
-  const layers = figureLayers().reverse();
-  // Selected figure first so its nodes win when figures overlap.
-  if (app.sel?.type === 'figure') layers.sort((a, b) => (b.id === app.sel.id) - (a.id === app.sel.id));
+  const wp = worldPoses();
+  let layers = figureLayers().reverse();
+  // Selected figure first so its nodes win when figures overlap; while joining, it's excluded.
+  if (app.joinPending) layers = layers.filter((l) => l.id !== app.sel?.id);
+  else if (app.sel?.type === 'figure') layers.sort((a, b) => (b.id === app.sel.id) - (a.id === app.sel.id));
   for (const layer of layers) {
-    const world = computeWorld(layer.rig, f.poses[layer.id]);
+    const world = computeWorld(layer.rig, wp[layer.id]);
     let best = null, bd = r;
     for (const n of layer.rig.nodes) {
       const w = world.get(n.id);
@@ -228,21 +234,22 @@ function hitNode(sx, sy, r) {
 }
 
 function hitFigureBody(x, y, tolStage) {
-  const f = curFrame();
+  const wp = worldPoses();
   for (const layer of figureLayers().reverse()) {
-    const world = computeWorld(layer.rig, f.poses[layer.id]);
+    const pose = wp[layer.id];
+    const world = computeWorld(layer.rig, pose);
     for (const n of layer.rig.nodes) {
       const w = world.get(n.id);
       if (w.root) continue;
-      const th = (n.thick * f.poses[layer.id].s) / 2;
+      const th = (n.thick * pose.s) / 2;
       if (n.shape === 'circle' || n.shape === 'filled') {
         const cx = (w.x + w.px) / 2, cy = (w.y + w.py) / 2;
         if (Math.hypot(x - cx, y - cy) <= w.len / 2 + th + tolStage) return layer;
       } else if (n.shape !== 'none' && segDist(x, y, w.px, w.py, w.x, w.y) <= th + tolStage) return layer;
       if (n.art && n.art.strokes.length) {
-        const m = inv(boneMatrix(w, f.poses[layer.id]));
-        const [lx, ly] = apply(m, x, y);
-        if (n.art.strokes.some((s) => hitStroke(s, lx, ly, tolStage / matScale(boneMatrix(w, f.poses[layer.id]))))) return layer;
+        const bm = boneMatrix(w, pose);
+        const [lx, ly] = apply(inv(bm), x, y);
+        if (n.art.strokes.some((s) => hitStroke(s, lx, ly, tolStage / matScale(bm)))) return layer;
       }
     }
   }
@@ -273,7 +280,7 @@ export function selectionBox() {
   const layer = layerById(P(), s.id);
   if (!layer) return null;
   if (s.type === 'figure') {
-    const pose = curFrame().poses[s.id];
+    const pose = worldPose(s.id);
     if (!pose) return null;
     const world = computeWorld(layer.rig, pose);
     return { box: figureBounds(layer.rig, world), pivot: [pose.x, pose.y] };
@@ -573,6 +580,7 @@ function startSelect(e, sx, sy, x, y) {
   const hn = hitNode(sx, sy, r);
   if (hn) {
     if (app.attachPending) return attachToBone(hn.layer, hn.node);
+    if (app.joinPending) return finishJoin(hn.layer, hn.node);
     const pose = f.poses[hn.layer.id];
     const w = hn.world.get(hn.node);
     select({ type: 'figure', id: hn.layer.id, node: hn.node });
@@ -580,8 +588,8 @@ function startSelect(e, sx, sy, x, y) {
     drag = { kind: 'node', layer: hn.layer, node: hn.node, pose, ox: w.x - x, oy: w.y - y, px: pose.x, py: pose.y, x0: x, y0: y };
     return;
   }
-  if (app.attachPending) {
-    toast('Tap a node (joint) to attach the drawing to its bone');
+  if (app.attachPending || app.joinPending) {
+    toast(app.joinPending ? 'Tap a joint on another figure to attach to it' : 'Tap a node (joint) to attach the drawing to its bone');
     return;
   }
   const tol = (e.pointerType === 'touch' ? 14 : 6) / view.z;
@@ -591,7 +599,7 @@ function startSelect(e, sx, sy, x, y) {
     const pose = f.poses[fl.id];
     if (!(app.sel?.type === 'figure' && app.sel.id === fl.id)) select({ type: 'figure', id: fl.id, node: null });
     checkpoint();
-    drag = { kind: 'figure-move', pose, x0: x, y0: y, px: pose.x, py: pose.y };
+    drag = { kind: 'figure-move', layer: fl, pose, x0: x, y0: y, px: pose.x, py: pose.y };
     return;
   }
   // 4. inside an existing layer / strokes selection box
@@ -663,22 +671,25 @@ function moveTool(e, sx, sy) {
     }
     case 'node': {
       const layer = d.layer;
-      const world = computeWorld(layer.rig, d.pose);
+      const world = computeWorld(layer.rig, worldPose(layer.id) || d.pose);
       const w = world.get(d.node);
       const tx = x + d.ox, ty = y + d.oy;
       if (w.root) {
-        d.pose.x = d.px + (x - d.x0);
-        d.pose.y = d.py + (y - d.y0);
+        const [lx, ly] = localDelta(P(), curFrame(), layer, x - d.x0, y - d.y0);
+        d.pose.x = d.px + lx;
+        d.pose.y = d.py + ly;
       } else if (app.poseMode === 'ik' && !e.shiftKey) poseIK(d.pose, world, d.node, tx, ty);
       else poseRotate(d.pose, world, d.node, tx, ty, { stretch: app.poseMode === 'stretch', snap: e.shiftKey || app.snap });
       changed('content');
       break;
     }
-    case 'figure-move':
-      d.pose.x = d.px + (x - d.x0);
-      d.pose.y = d.py + (y - d.y0);
+    case 'figure-move': {
+      const [lx, ly] = localDelta(P(), curFrame(), d.layer, x - d.x0, y - d.y0);
+      d.pose.x = d.px + lx;
+      d.pose.y = d.py + ly;
       changed('content');
       break;
+    }
     case 'xform':
       moveTransform(d, x, y, e.shiftKey || app.snap);
       changed('content');
@@ -736,7 +747,11 @@ function moveTransform(d, x, y, snap) {
   const dx = x - d.x0, dy = y - d.y0;
   if (d.sel.type === 'figure') {
     const p = d.pose, o = d.orig;
-    if (d.mode === 'move') { p.x = o.x + dx; p.y = o.y + dy; }
+    if (d.mode === 'move') {
+      const [lx, ly] = localDelta(P(), curFrame(), d.layer, dx, dy);
+      p.x = o.x + lx;
+      p.y = o.y + ly;
+    }
     else if (d.mode === 'rotate') p.r = o.r + da;
     else p.s = clamp(o.s * k, 0.05, 20);
   } else if (d.sel.type === 'layer') {
@@ -935,7 +950,7 @@ function attachToBone(layer, nodeId) {
   const s = app.sel;
   const src = layerById(P(), s.id);
   const node = nodeById(layer.rig, nodeId);
-  const pose = curFrame().poses[layer.id];
+  const pose = worldPose(layer.id);
   checkpoint();
   const w = computeWorld(layer.rig, pose).get(nodeId);
   if (!node.art) node.art = { strokes: [], base: w.len / (pose.s || 1), stretch: !w.root };
@@ -951,7 +966,7 @@ function attachToBone(layer, nodeId) {
 
 export function detachArt(layer, nodeId) {
   const node = nodeById(layer.rig, nodeId);
-  const pose = curFrame().poses[layer.id];
+  const pose = worldPose(layer.id);
   if (!node?.art?.strokes.length || !pose) return;
   checkpoint();
   const w = computeWorld(layer.rig, pose).get(nodeId);
@@ -964,6 +979,40 @@ export function detachArt(layer, nodeId) {
   select({ type: 'strokes', id: target.id, strokes: moved });
   changed('content', 'layers');
   toast(`Moved the art to “${target.name}” on this frame`);
+}
+
+// ---------------------------------------------------------------- figure joining
+export function startJoin() {
+  if (app.sel?.type !== 'figure') return toast('Select the figure to attach first (e.g. the sword)');
+  if (figureLayers().length < 2) return toast('Add another figure to attach to first');
+  app.joinPending = true;
+  app.tool = 'select';
+  changed('sel', 'tool');
+  toast('Now tap the joint it should hold on to (e.g. the hand)');
+}
+
+function finishJoin(parent, nodeId) {
+  const p = P(), child = layerById(p, app.sel.id);
+  app.joinPending = false;
+  if (!child || parent.id === child.id) {
+    changed('sel');
+    return toast('Pick a joint on a different figure', { kind: 'warn' });
+  }
+  if (wouldCycle(p, child.id, parent.id)) {
+    changed('sel');
+    return toast(`“${parent.name}” is already attached to “${child.name}”`, { kind: 'warn' });
+  }
+  checkpoint();
+  joinLayer(p, child, parent, nodeId, curFrame());
+  // Keep the attached figure drawn above what it hangs on.
+  const ci = p.layers.indexOf(child), pi = p.layers.indexOf(parent);
+  if (ci < pi) {
+    p.layers.splice(ci, 1);
+    p.layers.splice(p.layers.indexOf(parent) + 1, 0, child);
+  }
+  select({ type: 'figure', id: child.id, node: null });
+  changed('content', 'layers');
+  toast(`“${child.name}” now follows ${parent.name}’s joint on every frame`);
 }
 
 // ---------------------------------------------------------------- context menu
@@ -1122,12 +1171,13 @@ function drawOverlays() {
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const tool = app.tool;
-  const showNodes = tool === 'select' || app.attachPending;
+  const showNodes = tool === 'select' || app.attachPending || app.joinPending;
+  const wp = worldPoses();
 
   // Bone-draw mode: highlight the target bone.
   if (app.boneDraw) {
     const layer = layerById(p, app.boneDraw.id);
-    const pose = f.poses[app.boneDraw.id];
+    const pose = worldPose(app.boneDraw.id);
     if (layer && pose) {
       const w = computeWorld(layer.rig, pose).get(app.boneDraw.node);
       if (w) {
@@ -1146,10 +1196,9 @@ function drawOverlays() {
 
   if (showNodes) {
     for (const layer of figureLayers()) {
-      const pose = f.poses[layer.id];
-      const world = computeWorld(layer.rig, pose);
+      const world = computeWorld(layer.rig, wp[layer.id]);
       const isSel = app.sel?.type === 'figure' && app.sel.id === layer.id;
-      ctx.globalAlpha = isSel || app.attachPending ? 1 : 0.55;
+      ctx.globalAlpha = isSel || app.attachPending || (app.joinPending && !isSel) ? 1 : 0.55;
       for (const n of layer.rig.nodes) {
         const w = world.get(n.id);
         const [x, y] = toScreen(w.x, w.y);
@@ -1332,8 +1381,9 @@ export function stageKey(e) {
       if (dir[0]) pose.a[node.id] = (pose.a[node.id] ?? node.ang) + dir[0] * step * DEG;
       if (dir[1]) pose.l[node.id] = Math.max(1, (pose.l[node.id] ?? node.len) - dir[1] * step);
     } else {
-      pose.x += dir[0] * step;
-      pose.y += dir[1] * step;
+      const [lx, ly] = localDelta(P(), f, layer, dir[0] * step, dir[1] * step);
+      pose.x += lx;
+      pose.y += ly;
     }
   } else if (s.type === 'layer') {
     const xf = ensureXf(layer);

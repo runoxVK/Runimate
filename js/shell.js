@@ -9,6 +9,7 @@ import { saveSelectionToLibrary } from './library.js';
 import { openExport } from './export.js';
 import { h, icon, ibtn, popupMenu, promptDialog, popover } from './ui.js';
 import { ruler, RULER_TYPES, setRulerType, resetRuler, lineAngle, setLineAngle, nudgeRuler } from './ruler.js';
+import { reconnectFolder, folderName } from './folder.js';
 
 const tip = (label, id) => (keysFor(id) ? `${label} (${prettyKey(keysFor(id))})` : label);
 
@@ -113,7 +114,9 @@ function updateTop() {
   nameBtn.textContent = p.name;
   document.title = `${p.name} — Runimate`;
   const dirty = app.rev !== app.savedRev;
-  saveState.textContent = dirty ? 'Unsaved…' : 'Saved';
+  if (app.folder === 'reconnect') {
+    saveState.replaceChildren(h('button', { type: 'button', class: 'linkbtn', title: 'Allow Runimate to save into your projects folder again', onclick: async () => { const ok = await reconnectFolder(); if (ok) runCommand('save'); } }, icon('folder', 13), ' Reconnect folder'));
+  } else saveState.textContent = dirty ? 'Unsaved…' : app.folder === 'ok' ? `Saved to ${folderName()}` : 'Saved';
   saveState.classList.toggle('dirty', dirty);
   undoBtn.disabled = !canUndo();
   redoBtn.disabled = !canRedo();
@@ -135,6 +138,8 @@ function updateBanner() {
     const l = layerById(P(), app.boneDraw.id);
     const n = l && nodeById(l.rig, app.boneDraw.node);
     msg = [icon('bone', 16), h('span', {}, `Drawing on ${l?.name || 'figure'}${n?.parent ? '’s bone' : '’s main node'} — strokes stick to it`), h('button', { class: 'btn primary', type: 'button', onclick: A.endBoneDraw }, 'Done')];
+  } else if (app.joinPending) {
+    msg = [icon('bone', 16), h('span', {}, 'Tap the joint this figure should follow (e.g. a hand)'), h('button', { class: 'btn', type: 'button', onclick: () => { app.joinPending = false; changed('sel'); } }, 'Cancel')];
   } else if (app.attachPending) {
     msg = [icon('bone', 16), h('span', {}, 'Tap a node: the selected drawing will attach to that bone'), h('button', { class: 'btn', type: 'button', onclick: () => { app.attachPending = false; changed('sel'); } }, 'Cancel')];
   } else if (app.preview != null) {
@@ -326,6 +331,7 @@ function rulerPopover(anchor) {
 }
 
 // ---------------------------------------------------------------- context menu
+const selFig = () => (app.sel?.type === 'figure' ? layerById(P(), app.sel.id) : null);
 function contextItems() {
   const s = app.sel;
   const k = (id) => prettyKey(keysFor(id));
@@ -334,6 +340,7 @@ function contextItems() {
     it('Copy', 'copy', 'copy'), it('Copy pose', 'copy', 'copy-pose'), it('Paste pose', 'paste', 'paste-pose'),
     it('Duplicate', 'copy', 'duplicate'), it('Flip', 'flip', 'flip'), '-',
     it('Add joint', 'plus', 'add-node'), it('Draw on this bone', 'brush', 'bone-draw'), it('Save to library', 'library', 'save-asset'), '-',
+    selFig()?.join ? it('Detach from joint', 'scissors', 'detach') : it('Attach to another figure…', 'bone', 'join'),
     it('Remove from here on', 'trash', 'delete'),
   ];
   if (s?.type === 'strokes') return [

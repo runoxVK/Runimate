@@ -13,8 +13,12 @@ http://localhost:8040.
 `On your iPad: http://192.168.1.20:8040`. Open that address in Safari, then Share → *Add to Home Screen*
 for a full-screen app. If the iPad can't connect, allow Python through Windows Firewall (private networks).
 
-Projects and library items are stored in each browser separately. To move work between PC and iPad,
-use **Save to file** (`.runimate`) and **Library → Export / Import** (`.runilib`).
+**Where your work is saved:** every animation autosaves in the browser. On a computer with Chrome or Edge
+you can also pick a **projects folder** (Ctrl+O → *Choose a projects folder…*): each animation then
+autosaves there as `<name>.runimate`, and your library as `Runimate library.runilib`. After a browser
+restart click **Reconnect folder** in the top bar to allow saving again. iPad Safari can't write to
+folders, so there use **Save to file** (Share → Save to Files) as your backup. To move work between PC
+and iPad, open the `.runimate` file on the other device and use **Library → Export / Import** (`.runilib`).
 For the iPad app to work offline and keep a stable home, host the folder on any HTTPS static host
 (e.g. GitHub Pages) — it's plain static files, no build step.
 
@@ -27,6 +31,10 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 | Timing | Project FPS, plus per-keyframe **in-betweens** (`T` / `Alt+T`) that either **Tween** (with easing) or **Hold**. The scrubber previews every generated frame. |
 | Onion skin | `O`; the arrow next to the button sets frames before/after and strength. |
 | Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, line/rect/ellipse, lasso select, eyedropper. |
+| Joining | Select a figure (e.g. the Sword), press `J` (or *Attach to a joint…*), then tap the joint it should follow (e.g. a hand). It now moves with that joint on every frame; its X / Y / Turn become offsets from the joint. *Scale with* follows the parent's size; `Shift+J` detaches in place. |
+| Colour & fade | Joint colour can apply to **all frames** or **this frame** (tweens between keyframes). Each joint has a per-frame **opacity** (0 hides it), and each figure a per-frame **fade**. |
+| Motions | Select an animated figure → *Save motion…* stores its keyframes (angles, movement, colours, timing) in the Library. Select any figure with the same joints and tap the motion to apply it, with a repeat count (walk cycles keep walking forward). |
+| Sound | Timeline **♪** button → *Import sound…* (mp3, wav, m4a…). Clips show as waveforms under the timeline; drag them to slide, scrub to hear where words land. Playback follows the audio clock for lip-sync, and MP4 exports include the mix. |
 | Camera | `C` picks the Camera tool: drag the orange frame to pan, the round handle to rotate, the corner to zoom (arrow keys work too). Every keyframe can have its own camera and in-betweens glide between them; add **Shake** for impacts. Playback, thumbnails and exports show the camera's shot (`Shift+C` toggles that while playing). |
 | Rulers | `Q` toggles a **straight** or **circle** ruler (`Shift+Q` straight), `M` turns on **mirror symmetry**. Strokes started near a ruler follow it, or every stroke does with *Snap from anywhere* (parallel lines / concentric circles). Drag the white handles to place it, or use the Ruler button's angle, radius and move controls from the keyboard. |
 | Layers | **Frame-by-frame** drawing layers (own drawing per keyframe), **Sprite** layers (one drawing you move/turn/scale per frame, tweened), figure layers and image layers for tracing. |
