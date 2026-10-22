@@ -220,7 +220,7 @@ body[data-tool=line] #stage-canvas, body[data-tool=rect] #stage-canvas, body[dat
 .frame-info { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 92px; }
 .lbl { color: var(--muted); }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
-.inb-val { min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.half { font-size: 15px; line-height: 1; }
 .tl-strip {
   position: relative; display: flex; align-items: flex-end; gap: 6px; padding: 6px 10px 8px; overflow-x: auto; overflow-y: hidden;
   min-height: 84px; touch-action: pan-x; scrollbar-width: thin;
@@ -228,7 +228,7 @@ body[data-tool=line] #stage-canvas, body[data-tool=rect] #stage-canvas, body[dat
 .frame-thumb {
   position: relative; flex: none; display: flex; flex-direction: column; align-items: center; padding: 3px;
   border-radius: 8px; border: 2px solid transparent; background: var(--panel2); cursor: pointer;
-  margin-right: calc(var(--inb, 0) * 3px); transition: border-color .1s, background .1s;
+  transition: border-color .1s, background .1s;
 }
 .frame-thumb:hover { background: var(--panel3); }
 .frame-thumb.cur { border-color: var(--accent); background: rgba(77,163,255,.12); }

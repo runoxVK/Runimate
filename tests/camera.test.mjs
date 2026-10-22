@@ -1,4 +1,4 @@
-// Animated camera: tool handles, keyboard, tweening, shake, playback view.
+// Animated camera: tool handles, keyboard, 50% frames, shake, playback view.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { openApp, exportVia, sleep } from './helpers.mjs';
@@ -28,25 +28,25 @@ test('Ctrl+arrow turns the camera', async () => {
   assert.ok(Math.abs(c1.r - (5 * Math.PI) / 180) < 1e-6);
 });
 
-test('in-betweens glide between camera keys (zoom geometrically)', async () => {
+test('a 50% frame puts the camera halfway (zoom geometrically)', async () => {
   const r = await app.run((m) => {
     m.goto(0);
-    m.A.nudgeInbetweens(3);
-    const p = m.app.project;
-    return m.T.expand(p).map((e) => { const c = m.T.evalEntry(p, e).cam; return [c.x, c.z]; });
+    m.A.addMidFrame();
+    const c = m.app.project.frames[1].cam;
+    return [m.app.project.frames.length, c.x, c.z];
   });
-  assert.equal(r.length, 5);
-  assert.ok(Math.abs(r[2][0] - 690) < 0.01, 'halfway pan');
-  assert.ok(Math.abs(r[2][1] - Math.SQRT2) < 0.001, 'halfway zoom is sqrt(2)');
+  assert.equal(r[0], 3);
+  assert.ok(Math.abs(r[1] - 690) < 0.01, 'halfway pan');
+  assert.ok(Math.abs(r[2] - Math.SQRT2) < 0.001, 'halfway zoom is sqrt(2)');
 });
 
 test('shake is deterministic and bounded', async () => {
   const r = await app.run((m) => {
     const p = m.app.project;
-    p.frames[1].cam.shake = 10;
+    p.frames.at(-1).cam.shake = 10;
     const e = m.T.expand(p).at(-1);
     const a = m.T.evalEntry(p, e).cam, b = m.T.evalEntry(p, e).cam;
-    p.frames[1].cam.shake = 0;
+    p.frames.at(-1).cam.shake = 0;
     return [a.sx, b.sx];
   });
   assert.equal(r[0], r[1]);
@@ -55,18 +55,18 @@ test('shake is deterministic and bounded', async () => {
 
 test('timeline badges camera keyframes; export uses the camera', async () => {
   const badges = await app.page.$$eval('.frame-thumb', (els) => els.map((e) => e.classList.contains('has-cam')));
-  assert.deepEqual(badges, [false, true]);
+  assert.deepEqual(badges, [false, true, true]);
   const out = await exportVia(app, 'mp4');
   assert.ok(out.name?.includes('.mp4'), `got ${out.name}`);
   assert.deepEqual(out.preview.slice(0, 2), [1280, 720]);
 });
 
 test('scrubbing previews through the camera', async () => {
-  await app.run((m) => m.player.preview(4));
+  await app.run((m) => m.player.preview(2));
   await sleep(200);
   await app.shot('camera-view');
   const r = await app.run((m) => [m.app.preview, m.app.camView]);
-  assert.deepEqual(r, [4, true]);
+  assert.deepEqual(r, [2, true]);
   await app.run((m) => m.player.preview(null));
 });
 

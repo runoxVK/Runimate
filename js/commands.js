@@ -96,9 +96,7 @@ cmd('extend-left', 'Frames', 'Extend frame selection left', 'shift+,', () => ext
 cmd('extend-right', 'Frames', 'Extend frame selection right', 'shift+.', () => extend(1));
 cmd('copy-frames', 'Frames', 'Copy frame(s)', 'ctrl+alt+c', A.copyFrames);
 cmd('paste-frames', 'Frames', 'Paste frame(s) after current', 'ctrl+alt+v', A.pasteFrames);
-cmd('inb-more', 'Frames', 'More in-betweens (slower, smoother)', 't', () => A.nudgeInbetweens(1));
-cmd('inb-less', 'Frames', 'Fewer in-betweens', 'alt+t', () => A.nudgeInbetweens(-1));
-cmd('tween-toggle', 'Frames', 'Toggle tween / hold for frame', 'y', () => A.setFrameProp('tween', !P().frames[app.cur].tween));
+cmd('mid-frame', 'Frames', 'Add 50% frame (halfway to the next frame)', 't', A.addMidFrame);
 
 // ---- Playback & view
 cmd('play', 'Playback', 'Play / pause', 'space', togglePlay);

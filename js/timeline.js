@@ -1,4 +1,4 @@
-// Timeline: playback controls, keyframe strip with thumbnails, in-between settings, scrubber.
+// Timeline: playback controls, frame strip with thumbnails, sound lane, scrubber.
 import { app, P, onChange, changed, goto, checkpoint } from './app.js';
 import * as A from './actions.js';
 import { togglePlay, stop as stopPlay, preview, getEntries } from './player.js';
@@ -8,7 +8,7 @@ import { h, icon, ibtn, popupMenu, popover } from './ui.js';
 import { prettyKey, keysFor } from './commands.js';
 import { importSound, updateSound, removeSound, peaks, preload } from './audio.js';
 
-let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, inbVal, tweenSeg, easeSel, soundBtn, lane;
+let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, soundBtn, lane;
 const thumbs = new Map(); // frame id -> { el, canvas, dirty }
 let thumbTimer = 0, staleTimer = 0;
 
@@ -25,12 +25,6 @@ export function initTimeline(el) {
   onionBtn = ibtn('onion', tip('Onion skin', 'onion'), () => { app.onion.on = !app.onion.on; changed('prefs', 'content'); }, 'toggle');
   const onionMore = h('button', { class: 'ibtn mini', type: 'button', title: 'Onion skin settings', 'aria-label': 'Onion skin settings', onclick: (e) => onionPopover(e.currentTarget) }, icon('down', 14));
 
-  inbVal = h('span', { class: 'inb-val', 'aria-live': 'polite' }, '0');
-  tweenSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Between this frame and the next' },
-    h('button', { type: 'button', 'data-v': 'tween', title: 'Smoothly move between this keyframe and the next', onclick: () => A.setFrameProp('tween', true) }, 'Tween'),
-    h('button', { type: 'button', 'data-v': 'hold', title: 'Hold this pose for the in-between frames', onclick: () => A.setFrameProp('tween', false) }, 'Hold'));
-  easeSel = h('select', { class: 'sel', 'aria-label': 'Easing', onchange: (e) => A.setFrameProp('ease', e.target.value) },
-    [['linear', 'Linear'], ['inout', 'Ease in-out'], ['in', 'Ease in'], ['out', 'Ease out']].map(([v, l]) => h('option', { value: v }, l)));
   frameInfo = h('span', { class: 'frame-info' });
 
   const controls = h('div', { class: 'tl-row tl-top' },
@@ -47,13 +41,7 @@ export function initTimeline(el) {
     ),
     h('div', { class: 'tl-group frame-props' },
       frameInfo,
-      h('span', { class: 'lbl', title: 'Extra frames generated after this keyframe (T / Alt+T)' }, 'In-betweens'),
-      h('div', { class: 'stepper' },
-        ibtn('minus', tip('Fewer in-betweens', 'inb-less'), () => A.nudgeInbetweens(-1), 'mini'),
-        inbVal,
-        ibtn('plus', tip('More in-betweens', 'inb-more'), () => A.nudgeInbetweens(1), 'mini')),
-      tweenSeg,
-      easeSel,
+      h('button', { type: 'button', class: 'btn', title: tip('Add a frame halfway between this frame and the next', 'mid-frame'), onclick: A.addMidFrame }, h('b', { class: 'half' }, '½'), h('span', {}, 'Add 50% frame')),
     ),
     h('div', { class: 'tl-group' },
       ibtn('plus', tip('New frame — copies poses, blank drawing', 'new-frame'), () => A.newFrame(false), 'accent'),
@@ -63,7 +51,7 @@ export function initTimeline(el) {
   );
 
   strip = h('div', { class: 'tl-strip', role: 'listbox', 'aria-label': 'Keyframes', 'aria-orientation': 'horizontal', tabindex: '-1' });
-  scrub = h('input', { type: 'range', class: 'scrub', min: 0, max: 0, value: 0, 'aria-label': 'Scrub through every frame, including in-betweens', oninput: (e) => preview(+e.target.value) });
+  scrub = h('input', { type: 'range', class: 'scrub', min: 0, max: 0, value: 0, 'aria-label': 'Scrub through the frames', oninput: (e) => preview(+e.target.value) });
   scrub.addEventListener('change', () => {
     const e = getEntries()[+scrub.value];
     if (e && !e.u) preview(null);
@@ -234,7 +222,7 @@ function rebuild() {
     let t = thumbs.get(f.id);
     if (!t) {
       const canvas = h('canvas', { class: 'thumb-c' });
-      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas, h('span', { class: 'fnum' }), h('span', { class: 'badge' }), h('span', { class: 'cam-badge', title: 'Camera keyframe' }, icon('camera', 12)));
+      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas, h('span', { class: 'fnum' }), h('span', { class: 'cam-badge', title: 'Camera keyframe' }, icon('camera', 12)));
       t = { el, canvas, dirty: true };
       bindThumb(t, f.id);
       thumbs.set(f.id, t);
@@ -242,12 +230,8 @@ function rebuild() {
     t.canvas.style.width = `${tw}px`;
     t.canvas.style.height = `${th}px`;
     t.el.querySelector('.fnum').textContent = i + 1;
-    const badge = t.el.querySelector('.badge');
-    badge.textContent = f.inb ? `${f.tween ? '~' : '⏸'}${f.inb}` : '';
     t.el.classList.toggle('has-cam', !!f.cam);
-    badge.title = f.inb ? `${f.inb} ${f.tween ? 'tweened' : 'held'} in-between frame${f.inb > 1 ? 's' : ''}` : '';
-    t.el.style.setProperty('--inb', Math.min(f.inb, 12));
-    t.el.setAttribute('aria-label', `Frame ${i + 1}${f.inb ? `, ${f.inb} in-betweens` : ''}`);
+    t.el.setAttribute('aria-label', `Frame ${i + 1}`);
     return t.el;
   });
   const add = h('button', { class: 'frame-add', type: 'button', title: tip('New frame', 'new-frame'), 'aria-label': 'New frame', onclick: () => A.newFrame(false) }, icon('plus', 22));
@@ -348,11 +332,6 @@ function updateCurrent() {
   });
   const cur = thumbs.get(p.frames[app.cur]?.id);
   cur?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  const f = p.frames[app.cur];
-  inbVal.textContent = f.inb;
-  for (const b of tweenSeg.children) b.classList.toggle('on', (b.dataset.v === 'tween') === f.tween);
-  easeSel.value = f.ease;
-  easeSel.disabled = !f.tween || !f.inb;
   frameInfo.textContent = sel && sel[1] > sel[0] ? `Frames ${sel[0] + 1}–${sel[1] + 1}` : `Frame ${app.cur + 1} / ${p.frames.length}`;
 }
 

@@ -1,4 +1,4 @@
-// Playback and scrubbing over the expanded (keyframes + in-betweens) timeline.
+// Playback and scrubbing.
 import { app, P, changed } from './app.js';
 import { expand, entryOfKey } from './tween.js';
 import { startSound, stopSound, soundTime, blip } from './audio.js';
@@ -97,7 +97,7 @@ export function stop() {
 
 export const togglePlay = () => (app.playing ? stop() : play());
 
-// Scrub preview of any rendered frame (including in-betweens). null exits preview.
+// Scrub preview of a frame (shown through the camera). null exits preview.
 export function preview(i) {
   if (app.playing) stop();
   if (i == null) {

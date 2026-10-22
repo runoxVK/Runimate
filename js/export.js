@@ -154,9 +154,7 @@ function dims() {
 function frameEntries() {
   const p = P();
   const a = Math.min(opts.from, opts.to) - 1, b = Math.max(opts.from, opts.to) - 1;
-  const all = expand(p).filter((e) => e.k >= a && e.k <= b);
-  // A partial range shouldn't tween its last keyframe back toward frames outside it.
-  return all.filter((e) => !(e.k === b && e.u > 0 && e.n !== e.k && (e.n > b || e.n < a)));
+  return expand(p).filter((e) => e.k >= a && e.k <= b);
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

@@ -6,7 +6,7 @@
 //     draw:   mode 'frame' (own drawing per keyframe) | 'sprite' (one drawing, animated transform)
 //             strokes (sprite only), pv (pivot, local coords)
 //     image:  src (data URL), w, h, pv
-//   frames: keyframes, each { inb, tween, ease, poses, draws, xf }
+//   frames: one entry per rendered frame, each { poses, draws, xf, cam? }
 //     poses[layerId] = Pose   (figure present in this frame iff a pose exists)
 //     draws[layerId] = [Stroke]  (frame-mode draw layers)
 //     xf[layerId]   = { x, y, r, s }  (draw / image layer transform)
@@ -19,6 +19,7 @@ import { IDENT_XF, uid } from './geom.js';
 import { PRESETS, rigFromPreset } from './presets.js';
 import { defaultPose } from './rig.js';
 import { detachChildren } from './join.js';
+import { bakeInbetweens } from './tween.js';
 
 export const FORMAT = 'runimate';
 export const VERSION = 1;
@@ -26,7 +27,7 @@ export const VERSION = 1;
 export { uid };
 
 export function newFrame() {
-  return { id: uid('f'), inb: 0, tween: true, ease: 'linear', poses: {}, draws: {}, xf: {} };
+  return { id: uid('f'), poses: {}, draws: {}, xf: {} };
 }
 
 export function newProject({ name = 'Untitled animation', width = 1280, height = 720, fps = 12, bg = '#ffffff', starter = true } = {}) {
@@ -176,12 +177,9 @@ export function validateProject(data) {
   }
   for (const f of p.frames) {
     f.id ||= uid('f');
-    f.inb = Math.max(0, f.inb | 0);
-    f.tween = f.tween !== false;
-    f.ease ||= 'linear';
     f.poses ||= {};
     f.draws ||= {};
     f.xf ||= {};
   }
-  return p;
+  return bakeInbetweens(p);
 }

@@ -1,4 +1,4 @@
-// Posing figures, frames, in-betweens and playback.
+// Posing figures, frames, 50% frames and playback.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { openApp, dist, sleep } from './helpers.mjs';
@@ -60,25 +60,30 @@ test('keyboard posing: Tab picks joints, arrows rotate and stretch', async () =>
   await app.key('Escape');
 });
 
-test('new frames copy poses, in-betweens tween, holds hold', async () => {
+test('new frames copy poses; T adds a 50% frame halfway to the next', async () => {
   await app.key('n');
   const pose2 = await app.joints();
   await app.dragStage([pose2.legL2, [pose2.legL2[0] + 60, pose2.legL2[1] - 40]]);
-  await app.run((m) => { m.goto(0); m.A.nudgeInbetweens(3); });
+  const after2 = await app.joints();
+  await app.run((m) => m.goto(0));
+  const before1 = await app.joints();
+  await app.page.focus('#stage-canvas');
+  await app.key('t');
   const r = await app.run((m) => {
     const p = m.app.project, l = p.layers[0];
-    const foot = (e) => { const st = m.T.evalEntry(p, e); return m.rig.computeWorld(l.rig, st.poses[l.id]).get('legL2').x; };
-    const e = m.T.expand(p);
-    const tweened = e.slice(0, 5).map(foot);
-    p.frames[0].tween = false;
-    const held = m.T.expand(p).slice(0, 4).map(foot);
-    p.frames[0].tween = true;
-    return { frames: p.frames.length, total: e.length, tweened, held };
+    const foot = (k) => m.rig.computeWorld(l.rig, p.frames[k].poses[l.id]).get('legL2');
+    return { frames: p.frames.length, total: m.T.totalFrames(p), cur: m.app.cur, mid: [foot(1).x, foot(1).y], ang: [0, 1, 2].map((k) => p.frames[k].poses[l.id].a.legL2 ?? l.rig.nodes.find((n) => n.id === 'legL2').ang) };
   });
-  assert.equal(r.frames, 2);
-  assert.equal(r.total, 2 + 3);
-  for (let i = 1; i < 5; i++) assert.ok(r.tweened[i] > r.tweened[i - 1], 'foot moves steadily through the in-betweens');
-  assert.ok(r.held.every((x) => Math.abs(x - r.held[0]) < 1e-9), 'hold keeps the pose');
+  assert.equal(r.frames, 3);
+  assert.equal(r.total, 3, 'every frame on the timeline is one played frame');
+  assert.equal(r.cur, 1, 'the new 50% frame is selected');
+  assert.ok(Math.abs(r.ang[1] - (r.ang[0] + r.ang[2]) / 2) < 1e-9, 'joint angle is exactly halfway');
+  assert.ok(r.mid[0] > Math.min(before1.legL2[0], after2.legL2[0]) && r.mid[0] < Math.max(before1.legL2[0], after2.legL2[0]), 'foot lands between the two poses');
+});
+
+test('the last frame has no 50% frame to add', async () => {
+  const n = await app.run((m) => { m.goto(m.app.project.frames.length - 1); m.A.addMidFrame(); return m.app.project.frames.length; });
+  assert.equal(n, 3);
 });
 
 test('frames can be reordered by dragging thumbnails', async () => {
@@ -86,10 +91,10 @@ test('frames can be reordered by dragging thumbnails', async () => {
   const ids = () => app.run((m) => m.app.project.frames.map((f) => f.id));
   const before = await ids();
   const thumbs = await app.page.$$('.frame-thumb');
-  const b3 = await thumbs[2].boundingBox(), b1 = await thumbs[0].boundingBox();
-  await app.drag([[b3.x + b3.width / 2, b3.y + 20], [b1.x + 5, b1.y + 20]], 12);
+  const b4 = await thumbs[3].boundingBox(), b1 = await thumbs[0].boundingBox();
+  await app.drag([[b4.x + b4.width / 2, b4.y + 20], [b1.x + 5, b1.y + 20]], 12);
   const after = await ids();
-  assert.deepEqual(after, [before[2], before[0], before[1]]);
+  assert.deepEqual(after, [before[3], before[0], before[1], before[2]]);
 });
 
 test('playback advances frames and stops on Space', async () => {

@@ -2,10 +2,10 @@
 // and applied to any figure whose joints share ids (all humanoid presets do).
 import { app, P, curFrame, selLayer, changed, checkpoint, goto } from './app.js';
 import { deepClone, uid, clonePose, makeFrameFrom } from './model.js';
-import { computeWorld, figureBounds } from './rig.js';
+import { computeWorld, figureBounds, lerpPose } from './rig.js';
 import { drawFigure } from './render.js';
 import { put } from './storage.js';
-import { emptyBox, boxAdd } from './geom.js';
+import { emptyBox, boxAdd, EASES } from './geom.js';
 import { toast, formDialog } from './ui.js';
 
 function figureRange(p, id) {
@@ -37,7 +37,6 @@ export async function saveMotionToLibrary(refresh) {
     const f = p.frames[k], q = f.poses[layer.id];
     if (!q) continue;
     frames.push({
-      inb: f.inb, tween: f.tween, ease: f.ease,
       a: { ...q.a }, l: { ...q.l }, c: q.c ? { ...q.c } : null, o: q.o ? { ...q.o } : null, op: q.op ?? null,
       dx: q.x - base.x, dy: q.y - base.y, dr: q.r - base.r, ds: q.s / (base.s || 1),
     });
@@ -77,12 +76,11 @@ export function motionThumb(data, size = 112) {
 export async function applyMotion(asset) {
   const s = app.sel, layer = selLayer(), p = P();
   if (s?.type !== 'figure' || !layer) return toast('Select a figure first, then tap the motion to apply it');
-  const clip = asset.data;
+  const clip = expandClip(asset.data);
   const v = await formDialog(`Apply “${asset.name}” to ${layer.name}`, [
     { key: 'start', label: 'Start at keyframe', type: 'number', value: app.cur + 1, min: 1, max: p.frames.length + 1 },
     { key: 'repeat', label: 'Repeat', type: 'number', value: 1, min: 1, max: 50 },
     { key: 'move', label: 'Include movement (walking travels across the canvas)', type: 'checkbox', value: true },
-    { key: 'timing', label: 'Use the motion’s timing (in-betweens, tween / hold, easing)', type: 'checkbox', value: true },
   ], { ok: 'Apply', note: `${clip.frames.length} keyframes${v0(clip)}. Frames are added at the end if needed.` });
   if (!v) return;
   const ids = new Set(layer.rig.nodes.map((n) => n.id));
@@ -128,11 +126,6 @@ export async function applyMotion(asset) {
         q.s = base.s;
       }
       q.flip = base.flip;
-      if (v.timing) {
-        f.inb = cf.inb;
-        f.tween = cf.tween;
-        f.ease = cf.ease;
-      }
       f.poses[layer.id] = q;
       k++;
     }
@@ -140,6 +133,25 @@ export async function applyMotion(asset) {
   changed('frames', 'content');
   goto(k0);
   toast(`Applied to ${k - k0} keyframes${matched < clipIds.size ? ` (${matched} of ${clipIds.size} joints matched)` : ''}`, { ms: 2400 });
+}
+
+// Motions saved before in-betweens were removed carry per-frame inb counts:
+// expand those into real frames the same way the timeline used to.
+function expandClip(data) {
+  if (!data.frames.some((cf) => cf.inb > 0)) return data;
+  const frames = [];
+  const n = data.frames.length;
+  data.frames.forEach((cf, i) => {
+    frames.push(cf);
+    const nx = data.frames[i + 1];
+    for (let j = 1; j <= (cf.inb | 0); j++) {
+      if (!nx || cf.tween === false) { frames.push(cf); continue; }
+      const t = (EASES[cf.ease] || EASES.linear)(j / (cf.inb + 1));
+      const q = lerpPose(data.rig, clipPose(data, cf), clipPose(data, nx), t);
+      frames.push({ a: q.a, l: q.l, c: q.c || null, o: q.o || null, op: q.op ?? null, dx: q.x, dy: q.y, dr: q.r - data.r0, ds: q.s / (data.s0 || 1) });
+    }
+  });
+  return { ...data, frames, n };
 }
 
 const v0 = (clip) => (clip.rig.nodes.length ? ` · made with ${clip.rig.nodes.length - 1} joints` : '');

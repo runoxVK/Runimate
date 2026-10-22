@@ -28,7 +28,7 @@ before(async () => {
 after(() => app?.close());
 
 test('import a sound from the timeline Sound button', async () => {
-  await app.run((m) => { m.A.newFrame(false); m.app.project.frames[0].inb = 11; m.goto(0); m.changed('frames'); });
+  await app.run((m) => { for (let i = 0; i < 12; i++) m.A.newFrame(false); m.goto(0); });
   await app.page.click('#timeline .ibtn[aria-label^="Sound"]');
   await app.page.waitForSelector('.sound-pop .btn.primary');
   const [chooser] = await Promise.all([app.page.waitForFileChooser(), app.page.click('.sound-pop .btn.primary')]);

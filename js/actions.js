@@ -12,6 +12,7 @@ import { inv, chain, translate, scale, boxValid, DEG } from './geom.js';
 import { toast, promptDialog } from './ui.js';
 import { PRESETS, rigFromPreset } from './presets.js';
 import { defaultCam } from './camera.js';
+import { inbetweenFrame } from './tween.js';
 import { resolvePoses, detachLayer, detachChildren, setJoinScale } from './join.js';
 import { pickFile, loadImageFile } from './fileio.js';
 
@@ -77,20 +78,17 @@ export function moveFrames(dir) {
   changed('frames', 'frame');
 }
 
-export function setFrameProp(key, value) {
-  const [a, b] = range();
-  checkpoint('frameprop:' + key);
-  for (let i = a; i <= b; i++) P().frames[i][key] = value;
-  changed('frames');
-}
-export function nudgeInbetweens(d) {
-  const [a, b] = range();
-  checkpoint('inb');
-  for (let i = a; i <= b; i++) {
-    const f = P().frames[i];
-    f.inb = Math.max(0, Math.min(60, f.inb + d));
-  }
-  changed('frames');
+// Stick Nodes' "add 50% frame": a new frame halfway between this frame and the next.
+export function addMidFrame() {
+  const p = P();
+  const k = app.cur;
+  if (k >= p.frames.length - 1) return toast('Go to a frame that has a frame after it — the 50% frame goes between them', { ms: 2600 });
+  checkpoint();
+  p.frames.splice(k + 1, 0, inbetweenFrame(p, k, k + 1, 0.5));
+  app.frameSel = null;
+  changed('frames', 'content');
+  goto(k + 1);
+  toast(`Added a 50% frame between frames ${k + 1} and ${k + 2}`, { ms: 1400 });
 }
 
 export function copyFrames() {

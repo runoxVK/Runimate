@@ -142,7 +142,7 @@ function cameraProps() {
   if (!f.cam) for (let i = app.cur - 1; i >= 0; i--) if (p.frames[i].cam) { heldFrom = i; break; }
   return h('div', {},
     section('Camera',
-      h('p', { class: 'muted small' }, f.cam ? `Frame ${app.cur + 1} has its own camera. Add in-betweens to glide to the next camera keyframe.`
+      h('p', { class: 'muted small' }, f.cam ? `Frame ${app.cur + 1} has its own camera. Use Add 50% frame (T) between two camera positions for a smooth move.`
         : heldFrom >= 0 ? `Holding the camera from frame ${heldFrom + 1}. Change anything to give this frame its own.` : 'No camera moves yet — the shot is the whole canvas. Move, zoom or turn the orange frame to start.'),
       h('div', { class: 'grid2' },
         num('X', 'cx', () => cam().x, set((c, v) => (c.x = v))),
@@ -154,7 +154,7 @@ function cameraProps() {
       row(btn('Reset camera', 'rotate', A.resetCamera, '', 'Back to the full canvas on this frame'),
         f.cam && app.cur > 0 ? btn('Remove camera key', 'trash', A.removeCameraKey, 'danger', 'Hold the previous camera instead') : null)),
     section('Tips', h('ul', { class: 'tips' },
-      h('li', {}, 'Each keyframe can have its own camera; in-betweens glide between them using the frame’s easing.'),
+      h('li', {}, 'Each frame can have its own camera; Add 50% frame (T) puts a halfway camera between two frames.'),
       h('li', {}, 'Shake jitters the shot for impacts — set it on one keyframe and 0 on the next to fade it out.'),
       h('li', {}, 'Exports and timeline thumbnails show the camera’s shot.'))));
 }
@@ -173,7 +173,7 @@ function projectProps() {
       h('ul', { class: 'tips' },
         h('li', {}, 'Drag the ', h('b', {}, 'round nodes'), ' to pose a figure. The ', h('b', {}, 'square node'), ' moves the whole figure.'),
         h('li', {}, 'While drawing, press ', h('kbd', {}, 'Q'), ' for a ruler or ', h('kbd', {}, 'M'), ' for mirror symmetry.'),
-        h('li', {}, 'Press ', h('kbd', {}, 'N'), ' for a new frame, then pose again. Add ', h('b', {}, 'in-betweens'), ' in the timeline for smooth motion.'),
+        h('li', {}, 'Press ', h('kbd', {}, 'N'), ' for a new frame, then pose again. Press ', h('kbd', {}, 'T'), ' on a frame to add a ', h('b', {}, '50% frame'), ' halfway to the next one for smoother motion.'),
         h('li', {}, 'Pick the ', h('b', {}, 'Brush'), ' (', h('kbd', {}, 'B'), ') to draw on the current frame. Onion skin (', h('kbd', {}, 'O'), ') shows neighbours.'),
         h('li', {}, 'Select a joint and choose ', h('b', {}, 'Draw on this bone'), ' to give your figure drawn parts that move with it.'),
         h('li', {}, 'Save figures and drawings in the ', h('b', {}, 'Library'), ' tab to reuse them anywhere.'),

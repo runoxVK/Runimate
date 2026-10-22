@@ -7,16 +7,19 @@ let app;
 before(async () => (app = await openApp()));
 after(() => app?.close());
 
-test('joint colour and opacity can change per frame and tween', async () => {
+test('joint colour and opacity can change per frame and blend in a 50% frame', async () => {
   const r = await app.run((m) => {
     const p = m.app.project, l = p.layers[0];
     m.A.newFrame(false);
     p.frames[1].poses[l.id].c = { armL2: '#ff0000' };
     p.frames[1].poses[l.id].o = { head: 0 };
     p.frames[1].poses[l.id].op = 0.5;
-    p.frames[0].inb = 1;
-    const mid = m.T.evalEntry(p, m.T.expand(p)[1]).poses[l.id];
-    return { c: mid.c.armL2, o: mid.o.head, op: mid.op, f0: p.frames[0].poses[l.id].c };
+    m.goto(0);
+    m.A.addMidFrame();
+    const mid = p.frames[1].poses[l.id];
+    const out = { c: mid.c.armL2, o: mid.o.head, op: mid.op, f0: p.frames[0].poses[l.id].c };
+    m.undo(); // back to two frames for the next tests
+    return out;
   });
   assert.equal(r.c, '#911111', 'halfway between #222222 and #ff0000');
   assert.equal(r.o, 0.5);
@@ -49,7 +52,6 @@ test('save a motion and apply it to another stickman with repeats', async () => 
     const p = m.app.project, l = p.layers[0];
     p.frames[1].poses[l.id].a.legL1 = -1.2;
     p.frames[1].poses[l.id].x += 60;
-    p.frames[0].inb = 2;
     m.select({ type: 'figure', id: l.id, node: null });
     m.changed('content');
   });
@@ -73,13 +75,12 @@ test('save a motion and apply it to another stickman with repeats', async () => 
   await sleep(200);
   const r = await app.run((m, id) => {
     const p = m.app.project;
-    return { frames: p.frames.length, poses: p.frames.map((f) => f.poses[id] && [Math.round(f.poses[id].x), +(f.poses[id].a.legL1 ?? 0).toFixed(2)]), inb: p.frames.map((f) => f.inb) };
+    return { frames: p.frames.length, poses: p.frames.map((f) => f.poses[id] && [Math.round(f.poses[id].x), +(f.poses[id].a.legL1 ?? 0).toFixed(2)]) };
   }, target);
   assert.equal(r.frames, 4, 'frames were added for the repeat');
   const x0 = r.poses[0][0];
   assert.deepEqual(r.poses.map((q) => q[0] - x0), [0, 60, 120, 180], 'repeats keep walking forward');
   assert.equal(r.poses[1][1], -1.2);
-  assert.deepEqual(r.inb.slice(0, 3), [2, 0, 2], 'motion timing copied');
   await app.run((m) => { m.app.panelTab = 'library'; m.changed('panel'); });
   await sleep(200);
   await app.shot('motion-library');

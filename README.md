@@ -28,14 +28,14 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 | --- | --- |
 | Pose | Drag the round nodes (Rotate mode). **Stretch** mode changes bone length, **IK** mode drags a hand/foot and bends the elbow/knee. The square main node or the body moves the figure; round handle rotates, square handle scales. Shift snaps to 15°. |
 | Frames | `N` new frame (copies poses), `Shift+N` duplicate incl. drawings. Drag thumbnails to reorder. |
-| Timing | Project FPS, plus per-keyframe **in-betweens** (`T` / `Alt+T`) that either **Tween** (with easing) or **Hold**. The scrubber previews every generated frame. |
+| Timing | Every frame on the timeline is one frame, like Stick Nodes; **FPS** sets the speed. **Add 50% frame** (`T`, or the ½ button) inserts a frame halfway between the current frame and the next — joints, positions, sprite moves, colours and the camera all land at 50%. Duplicate a frame (`Shift+N`) to hold a pose longer. Projects made with the old in-betweens are converted to real frames when opened, so they play the same. |
 | Onion skin | `O`; the arrow next to the button sets frames before/after and strength. |
 | Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, line/rect/ellipse, lasso select, eyedropper. |
 | Joining | Select a figure (e.g. the Sword), press `J` (or *Attach to a joint…*), then tap the joint it should follow (e.g. a hand). It now moves with that joint on every frame; its X / Y / Turn become offsets from the joint. *Scale with* follows the parent's size; `Shift+J` detaches in place. |
 | Colour & fade | Joint colour can apply to **all frames** or **this frame** (tweens between keyframes). Each joint has a per-frame **opacity** (0 hides it), and each figure a per-frame **fade**. |
 | Motions | Select an animated figure → *Save motion…* stores its keyframes (angles, movement, colours, timing) in the Library. Select any figure with the same joints and tap the motion to apply it, with a repeat count (walk cycles keep walking forward). |
 | Sound | Timeline **♪** button → *Import sound…* (mp3, wav, m4a…). Clips show as waveforms under the timeline; drag them to slide, scrub to hear where words land. Playback follows the audio clock for lip-sync, and MP4 exports include the mix. |
-| Camera | `C` picks the Camera tool: drag the orange frame to pan, the round handle to rotate, the corner to zoom (arrow keys work too). Every keyframe can have its own camera and in-betweens glide between them; add **Shake** for impacts. Playback, thumbnails and exports show the camera's shot (`Shift+C` toggles that while playing). |
+| Camera | `C` picks the Camera tool: drag the orange frame to pan, the round handle to rotate, the corner to zoom (arrow keys work too). Every frame can have its own camera, and a 50% frame (`T`) puts a halfway camera between two; add **Shake** for impacts. Playback, thumbnails and exports show the camera's shot (`Shift+C` toggles that while playing). |
 | Rulers | `Q` toggles a **straight** or **circle** ruler (`Shift+Q` straight), `M` turns on **mirror symmetry**. Strokes started near a ruler follow it, or every stroke does with *Snap from anywhere* (parallel lines / concentric circles). Drag the white handles to place it, or use the Ruler button's angle, radius and move controls from the keyboard. |
 | Layers | **Frame-by-frame** drawing layers (own drawing per keyframe), **Sprite** layers (one drawing you move/turn/scale per frame, tweened), figure layers and image layers for tracing. |
 | Bone art | Select a joint → *Draw on this bone*, or lasso strokes → *Attach to a bone*. The art follows (and optionally stretches with) the bone in every frame and is saved with the figure. |
@@ -53,7 +53,7 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 ## Tests
 
 Automated browser tests drive the real app in a hidden Chrome or Edge window: posing (rotate, IK,
-keyboard), frames and in-betweens, drawing, eraser, lasso, bone art, rulers and mirror, iPad touch and
+keyboard), frames and 50% frames, drawing, eraser, lasso, bone art, rulers and mirror, iPad touch and
 pen input, the camera, every export format, autosave/reload, the library, and every command.
 
 One-time setup (needs Node.js 18+ and Python):
