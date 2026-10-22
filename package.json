@@ -1,0 +1,13 @@
+{
+  "name": "runimate",
+  "private": true,
+  "description": "Stick figure animation with node posing, tweening and frame-by-frame drawing.",
+  "type": "module",
+  "scripts": {
+    "start": "python serve.py",
+    "test": "node --test --test-concurrency=1 \"tests/*.test.mjs\""
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

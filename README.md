@@ -40,4 +40,26 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 ## Files
 
 `index.html`, `css/`, `js/` (ES modules, no build), `vendor/mp4-muxer.mjs` (MIT, for MP4 export),
-`sw.js` + `manifest.webmanifest` (offline / installable), `serve.py` (local + LAN server).
+`sw.js` + `manifest.webmanifest` (offline / installable), `serve.py` (local + LAN server), `tests/` (browser tests).
+
+## Tests
+
+Automated browser tests drive the real app in a hidden Chrome or Edge window: posing (rotate, IK,
+keyboard), frames and in-betweens, drawing, eraser, lasso, bone art, rulers and mirror, iPad touch and
+pen input, the camera, every export format, autosave/reload, the library, and every command.
+
+One-time setup (needs Node.js 18+ and Python):
+
+```bash
+npm install
+```
+
+Run everything:
+
+```bash
+npm test
+```
+
+Each run starts its own server on a free port with a fresh browser profile, so your saved animations are
+never touched. Screenshots from the runs land in `tests/output/`. If the browser isn't found, set
+`CHROME_PATH` to a Chrome/Edge executable; set `PYTHON` if Python isn't on your PATH as `python`.
