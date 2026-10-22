@@ -9,6 +9,7 @@ import { projectForm } from './projects.js';
 import { h, icon, ibtn, popupMenu } from './ui.js';
 import { prettyKey, keysFor } from './commands.js';
 import { DEG } from './geom.js';
+import { camAt, ensureCam } from './camera.js';
 
 let root, tabsEl, body;
 let binds = [];
@@ -39,6 +40,7 @@ export function initPanels(el) {
   onChange((f) => {
     const structural = ['sel', 'layers', 'project', 'frame', 'frames', 'assets', 'panel', 'tool', 'clipboard'].some((k) => f.has(k));
     if (structural) render();
+    else if (f.has('camera') && !body.contains(document.activeElement)) render();
     else if (f.has('content') || f.has('playframe')) sync();
   });
 }
@@ -119,12 +121,42 @@ const row = (...c) => h('div', { class: 'row gap wrap' }, ...c);
 function propsTab() {
   const s = app.sel, layer = selLayer();
   if (app.boneDraw) return boneDrawProps();
+  if (app.tool === 'camera') return cameraProps();
   if (s && layer) {
     if (s.type === 'figure') return figureProps(layer);
     if (s.type === 'strokes') return strokesProps(layer);
     if (s.type === 'layer') return layerProps(layer);
   }
   return projectProps();
+}
+
+function cameraProps() {
+  const p = P(), f = curFrame();
+  const cam = () => camAt(p, app.cur);
+  // Editing a field gives this keyframe its own camera if it was holding an earlier one.
+  const set = (fn) => (v) => {
+    fn(ensureCam(p, app.cur), v);
+    changed('camera');
+  };
+  let heldFrom = -1;
+  if (!f.cam) for (let i = app.cur - 1; i >= 0; i--) if (p.frames[i].cam) { heldFrom = i; break; }
+  return h('div', {},
+    section('Camera',
+      h('p', { class: 'muted small' }, f.cam ? `Frame ${app.cur + 1} has its own camera. Add in-betweens to glide to the next camera keyframe.`
+        : heldFrom >= 0 ? `Holding the camera from frame ${heldFrom + 1}. Change anything to give this frame its own.` : 'No camera moves yet — the shot is the whole canvas. Move, zoom or turn the orange frame to start.'),
+      h('div', { class: 'grid2' },
+        num('X', 'cx', () => cam().x, set((c, v) => (c.x = v))),
+        num('Y', 'cy', () => cam().y, set((c, v) => (c.y = v))),
+        num('Zoom', 'cz', () => cam().z * 100, set((c, v) => (c.z = Math.max(5, v) / 100)), { min: 5, max: 2000, step: 5, suffix: '%' }),
+        num('Turn', 'cr', () => (cam().r * 180) / Math.PI, set((c, v) => (c.r = v * DEG)), { step: 1, suffix: '°' })),
+      range('Shake', 'csh', () => cam().shake || 0, set((c, v) => (c.shake = v)), { min: 0, max: 40, step: 1, fmt: (v) => (v ? `${v}px` : 'off') }),
+      check('Camera view when playing', 'cview', () => app.camView, (v) => { app.camView = v; changed('pref-save'); }),
+      row(btn('Reset camera', 'rotate', A.resetCamera, '', 'Back to the full canvas on this frame'),
+        f.cam && app.cur > 0 ? btn('Remove camera key', 'trash', A.removeCameraKey, 'danger', 'Hold the previous camera instead') : null)),
+    section('Tips', h('ul', { class: 'tips' },
+      h('li', {}, 'Each keyframe can have its own camera; in-betweens glide between them using the frame’s easing.'),
+      h('li', {}, 'Shake jitters the shot for impacts — set it on one keyframe and 0 on the next to fade it out.'),
+      h('li', {}, 'Exports and timeline thumbnails show the camera’s shot.'))));
 }
 
 function projectProps() {

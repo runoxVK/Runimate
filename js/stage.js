@@ -10,6 +10,7 @@ import { currentEntry, stop as stopPlayback } from './player.js';
 import { apply, inv, chain, translate, rotate, scale, segDist, pointInPoly, boxTransform, boxValid, DEG, clamp, round2 } from './geom.js';
 import { toast, popupMenu } from './ui.js';
 import { snapper, mirrorMatrix, rulerHandles, dragRulerHandle, drawRuler, ruler } from './ruler.js';
+import { camAt, camUsed, camCorners, camMatrix, ensureCam } from './camera.js';
 
 export const view = { z: 1, x: 0, y: 0 };
 let canvas, ctx, dpr = 1, cssW = 0, cssH = 0;
@@ -312,7 +313,7 @@ function pressureOf(e) {
   return clamp(0.12 + 0.88 * Math.pow(p, 0.8), 0.05, 1);
 }
 
-const DEADZONE = new Set(['node', 'figure-move', 'xform', 'pan']);
+const DEADZONE = new Set(['node', 'figure-move', 'xform', 'pan', 'cam']);
 const DRAW_TOOLS = new Set(['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse', 'lasso']);
 
 function onDown(e) {
@@ -493,6 +494,7 @@ function startTool(e, sx, sy) {
   const [x, y] = toStage(sx, sy);
   const tool = app.tool;
   if (tool === 'select' || app.attachPending) return startSelect(e, sx, sy, x, y);
+  if (tool === 'camera') return startCamera(e, sx, sy, x, y);
   if (tool === 'eyedropper') return eyedrop(sx, sy);
   if (e.altKey && (tool === 'brush' || tool === 'fill')) return eyedrop(sx, sy, true);
   if (tool === 'lasso') {
@@ -525,6 +527,36 @@ function startTool(e, sx, sy) {
   } else if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
     drag = { kind: 'shape', shape: tool, target, m, mi, ms, mirror, x0: x, y0: y, x1: x, y1: y };
   }
+}
+
+// Camera tool: drag inside the frame to move, round handle rotates, corner handle zooms.
+function camHandles(corners) {
+  const s = corners.map(([x, y]) => toScreen(x, y));
+  const cx = (s[0][0] + s[2][0]) / 2, cy = (s[0][1] + s[2][1]) / 2;
+  const tx = (s[0][0] + s[1][0]) / 2, ty = (s[0][1] + s[1][1]) / 2;
+  const L = Math.hypot(tx - cx, ty - cy) || 1;
+  return { s, rot: [tx + ((tx - cx) / L) * 28, ty + ((ty - cy) / L) * 28], zoom: s[2], top: [tx, ty], center: [cx, cy] };
+}
+
+function startCamera(e, sx, sy, x, y) {
+  const p = P();
+  const cam = camAt(p, app.cur);
+  const corners = camCorners(p, cam);
+  const hs = camHandles(corners);
+  const r = hitRadius(e.pointerType) + 4;
+  let mode = null;
+  if (Math.hypot(sx - hs.rot[0], sy - hs.rot[1]) < r) mode = 'rotate';
+  else if (Math.hypot(sx - hs.zoom[0], sy - hs.zoom[1]) < r) mode = 'zoom';
+  else if (pointInPoly(x, y, corners.flat())) mode = 'move';
+  if (!mode) {
+    drag = { kind: 'pan', sx, sy, vx: view.x, vy: view.y };
+    return;
+  }
+  checkpoint();
+  drag = {
+    kind: 'cam', mode, cam: null, orig: { ...cam }, x0: x, y0: y,
+    a0: Math.atan2(y - cam.y, x - cam.x), d0: Math.hypot(x - cam.x, y - cam.y) || 1,
+  };
 }
 
 function startSelect(e, sx, sy, x, y) {
@@ -616,6 +648,19 @@ function moveTool(e, sx, sy) {
     case 'ruler':
       dragRulerHandle(d.id, x, y, d.x0, d.y0, d.start, e.shiftKey);
       break;
+    case 'cam': {
+      const c = (d.cam ||= ensureCam(P(), app.cur)), o = d.orig;
+      if (d.mode === 'move') {
+        c.x = o.x + (x - d.x0);
+        c.y = o.y + (y - d.y0);
+      } else if (d.mode === 'rotate') {
+        let da = Math.atan2(y - o.y, x - o.x) - d.a0;
+        if (e.shiftKey || app.snap) da = Math.round((o.r + da) / (15 * DEG)) * 15 * DEG - o.r;
+        c.r = o.r + da;
+      } else c.z = clamp((o.z * d.d0) / (Math.hypot(x - o.x, y - o.y) || 1), 0.05, 20);
+      changed('content');
+      break;
+    }
     case 'node': {
       const layer = d.layer;
       const world = computeWorld(layer.rig, d.pose);
@@ -761,6 +806,10 @@ function endTool(e, sx, sy) {
       break;
     case 'ruler':
       changed('pref-save', 'ruler');
+      break;
+    case 'cam':
+      if (!d.moved || !d.cam) cancelCheckpoint();
+      else changed('content', 'camera');
       break;
     case 'node':
     case 'figure-move':
@@ -951,9 +1000,14 @@ function render(noOverlay = false) {
   const st = displayState();
   const editing = editable();
   if (editing && app.onion.on) drawOnion(base);
-  renderScene(ctx, p, st);
-
-  // Live previews in their target space.
+  // Playback / scrubbing shows the final shot through the camera; editing shows the whole stage.
+  const throughCam = !editing && app.camView && camUsed(p);
+  if (throughCam) {
+    ctx.save();
+    ctx.transform(...camMatrix(p, st.cam));
+    renderScene(ctx, p, st);
+    ctx.restore();
+  } else renderScene(ctx, p, st);
   // Live previews in their target space (plus the mirrored copy when symmetry is on).
   const copies = drag?.mirror ? [null, drag.mirror] : [null];
   if (drag && (drag.kind === 'brush' || drag.kind === 'fill')) {
@@ -1170,6 +1224,7 @@ function drawOverlays() {
   }
 
   drawRuler(ctx, toScreen, view.z, !!drag?.snap);
+  drawCameraFrame();
 
   // Brush / eraser cursor.
   if (hover && !gesture && ['brush', 'eraser', 'line', 'rect', 'ellipse'].includes(tool)) {
@@ -1181,6 +1236,49 @@ function drawOverlays() {
     ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,.9)';
     ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCameraFrame() {
+  const p = P();
+  const active = app.tool === 'camera';
+  if (!active && !camUsed(p)) return;
+  const hs = camHandles(camCorners(p, camAt(p, app.cur)));
+  ctx.save();
+  ctx.beginPath();
+  hs.s.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.setLineDash(active ? [] : [7, 5]);
+  ctx.lineWidth = active ? 2 : 1.5;
+  ctx.strokeStyle = active ? 'rgba(255,176,32,.95)' : 'rgba(255,176,32,.6)';
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Label in the top-left corner.
+  const [lx, ly] = hs.s[0];
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.fillStyle = active ? 'rgba(255,176,32,.95)' : 'rgba(255,176,32,.7)';
+  ctx.fillText(curFrame().cam || !camUsed(p) ? 'CAMERA' : 'CAMERA · held from earlier frame', lx + 6, ly + 15);
+  if (active) {
+    ctx.strokeStyle = 'rgba(255,176,32,.95)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(...hs.top);
+    ctx.lineTo(...hs.rot);
+    ctx.stroke();
+    for (const [x, y, sq] of [[...hs.rot, false], [...hs.zoom, true]]) {
+      ctx.beginPath();
+      if (sq) ctx.rect(x - 6, y - 6, 12, 12);
+      else ctx.arc(x, y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.stroke();
+    }
+    const [cx, cy] = hs.center;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
+    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
     ctx.stroke();
   }
   ctx.restore();
@@ -1202,6 +1300,19 @@ export function stageKey(e) {
     const i = ids.indexOf(s.node);
     s.node = ids[(i + (e.shiftKey ? -1 : 1) + ids.length) % ids.length] ?? ids[0];
     changed('sel');
+    return true;
+  }
+  if (dir && app.tool === 'camera') {
+    checkpoint('camkey:' + e.key);
+    const c = ensureCam(P(), app.cur);
+    if (e.ctrlKey || e.metaKey) {
+      if (dir[0]) c.r += dir[0] * step * DEG;
+      if (dir[1]) c.z = clamp(c.z * (1 - dir[1] * step * 0.01), 0.05, 20);
+    } else {
+      c.x += (dir[0] * step) / c.z;
+      c.y += (dir[1] * step) / c.z;
+    }
+    changed('content', 'camera');
     return true;
   }
   if (!dir || !s) return false;

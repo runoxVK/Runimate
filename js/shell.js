@@ -14,6 +14,7 @@ const tip = (label, id) => (keysFor(id) ? `${label} (${prettyKey(keysFor(id))})`
 
 const TOOLS = [
   ['select', 'select', 'Animate / select', 'tool-select'],
+  ['camera', 'camera', 'Camera', 'tool-camera'],
   ['brush', 'brush', 'Brush', 'tool-brush'],
   ['eraser', 'eraser', 'Eraser', 'tool-eraser'],
   ['fill', 'fill', 'Fill shape', 'tool-fill'],
@@ -137,7 +138,7 @@ function updateBanner() {
   } else if (app.attachPending) {
     msg = [icon('bone', 16), h('span', {}, 'Tap a node: the selected drawing will attach to that bone'), h('button', { class: 'btn', type: 'button', onclick: () => { app.attachPending = false; changed('sel'); } }, 'Cancel')];
   } else if (app.preview != null) {
-    msg = [icon('frames', 16), h('span', {}, 'Previewing an in-between frame — tap the canvas or a frame to edit')];
+    msg = [icon('frames', 16), h('span', {}, 'Previewing the final shot — tap the canvas or a frame to edit')];
   }
   banner.classList.toggle('show', !!msg);
   if (msg) banner.replaceChildren(...msg);
@@ -263,6 +264,11 @@ function renderOptions() {
       h('button', { type: 'button', class: 'btn danger', onclick: A.deleteSelection }, icon('trash', 15), 'Delete'));
   } else if (t === 'eyedropper') parts.push(hint('Tap the canvas to pick a colour'));
   else if (t === 'hand') parts.push(hint('Drag to pan · pinch or Ctrl+scroll to zoom'));
+  else if (t === 'camera') {
+    parts.push(optCheck('Camera view when playing', () => app.camView, (v) => (app.camView = v), 'Play and scrub through the camera (Shift+C)'));
+    parts.push(h('button', { type: 'button', class: 'btn', onclick: A.resetCamera }, icon('rotate', 15), 'Reset'));
+    parts.push(hint('Drag inside the frame to move · round handle turns · corner zooms · arrows nudge, Ctrl+arrows turn / zoom'));
+  }
 
   const drawing = ['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse'].includes(t);
   const right = drawing || t === 'lasso' ? targetPicker() : null;

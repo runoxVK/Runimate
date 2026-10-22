@@ -128,7 +128,9 @@ export function cloneLayer(l) {
   return c;
 }
 export function cloneFrame(f) {
-  return { ...f, poses: mapObj(f.poses, clonePose), draws: mapObj(f.draws, (a) => a.slice()), xf: mapObj(f.xf, (x) => ({ ...x })) };
+  const c = { ...f, poses: mapObj(f.poses, clonePose), draws: mapObj(f.draws, (a) => a.slice()), xf: mapObj(f.xf, (x) => ({ ...x })) };
+  if (f.cam) c.cam = { ...f.cam };
+  return c;
 }
 // Structural clone that shares immutable stroke objects (cheap enough for undo).
 export function cloneProject(p) {

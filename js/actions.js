@@ -11,7 +11,21 @@ import { viewCenter, ensureXf, detachArt, startAttach } from './stage.js';
 import { inv, chain, translate, scale, boxValid, DEG } from './geom.js';
 import { toast, promptDialog } from './ui.js';
 import { PRESETS, rigFromPreset } from './presets.js';
+import { defaultCam } from './camera.js';
 import { pickFile, loadImageFile } from './fileio.js';
+
+export function resetCamera() {
+  checkpoint();
+  curFrame().cam = defaultCam(P());
+  changed('content', 'camera');
+}
+export function removeCameraKey() {
+  const f = curFrame();
+  if (!f.cam) return;
+  checkpoint();
+  delete f.cam;
+  changed('content', 'frames');
+}
 
 export function setTool(t) {
   if (t === app.tool) return;

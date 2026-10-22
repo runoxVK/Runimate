@@ -83,6 +83,7 @@ const P = {
   new: '<path d="M6 3h8l5 5v13H6zM14 3v5h5M12 11v6M9 14h6"/>',
   pen: '<path d="M4 20l4-1 11-11-3-3L5 16zM14 6l3 3"/>',
   scissors: '<circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="M8.5 8.5L20 19M8.5 15.5L20 5"/>',
+  camera: '<rect x="2" y="7" width="13" height="10" rx="2"/><path d="M15 11l6-3.5v9L15 13z"/>',
   ruler: '<path d="M3 16.5L16.5 3 21 7.5 7.5 21z"/><path d="M7 12.5l2 2M10 9.5l1.5 1.5M12.5 7l2 2"/>',
   mirror: '<path d="M12 3v18" stroke-dasharray="2.5 2.5"/><path d="M9.5 7L4 17h5.5zM14.5 7L20 17h-5.5z"/>',
   circle: '<circle cx="12" cy="12" r="8" stroke-dasharray="3 2.5"/><path d="M12 10v4M10 12h4"/>',

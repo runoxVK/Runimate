@@ -27,6 +27,7 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 | Timing | Project FPS, plus per-keyframe **in-betweens** (`T` / `Alt+T`) that either **Tween** (with easing) or **Hold**. The scrubber previews every generated frame. |
 | Onion skin | `O`; the arrow next to the button sets frames before/after and strength. |
 | Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, line/rect/ellipse, lasso select, eyedropper. |
+| Camera | `C` picks the Camera tool: drag the orange frame to pan, the round handle to rotate, the corner to zoom (arrow keys work too). Every keyframe can have its own camera and in-betweens glide between them; add **Shake** for impacts. Playback, thumbnails and exports show the camera's shot (`Shift+C` toggles that while playing). |
 | Rulers | `Q` toggles a **straight** or **circle** ruler (`Shift+Q` straight), `M` turns on **mirror symmetry**. Strokes started near a ruler follow it, or every stroke does with *Snap from anywhere* (parallel lines / concentric circles). Drag the white handles to place it, or use the Ruler button's angle, radius and move controls from the keyboard. |
 | Layers | **Frame-by-frame** drawing layers (own drawing per keyframe), **Sprite** layers (one drawing you move/turn/scale per frame, tweened), figure layers and image layers for tracing. |
 | Bone art | Select a joint → *Draw on this bone*, or lasso strokes → *Attach to a bone*. The art follows (and optionally stretches with) the bone in every frame and is saved with the figure. |

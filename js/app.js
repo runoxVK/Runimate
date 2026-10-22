@@ -24,13 +24,14 @@ export const app = {
   boneDraw: null, // { id, node } while drawing art onto a bone
   attachPending: false, // waiting for a bone click to attach selected strokes
   ruler: null, // drawing guide, see ruler.js
+  camView: true, // play / scrub through the animated camera
   clipboard: null,
   fileHandle: null,
   rev: 0,
   savedRev: 0,
 };
 
-const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler'];
+const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler', 'camView'];
 export function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem('runimate.prefs') || '{}');

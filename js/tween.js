@@ -1,15 +1,16 @@
 // Timeline expansion: keyframes plus generated in-between frames.
 import { EASES, lerp } from './geom.js';
 import { lerpPose } from './rig.js';
+import { camAt, lerpCam, withShake } from './camera.js';
 
-// One entry per rendered frame: k = keyframe, u = 0..1 progress toward keyframe n.
+// One entry per rendered frame: k = keyframe, u = 0..1 progress toward keyframe n, i = frame number.
 export function expand(p) {
   const out = [];
   const n = p.frames.length;
   p.frames.forEach((f, k) => {
-    out.push({ k, u: 0, n: k });
+    out.push({ k, u: 0, n: k, i: out.length });
     const next = k + 1 < n ? k + 1 : p.loop && n > 1 ? 0 : k;
-    for (let j = 1; j <= f.inb; j++) out.push({ k, u: f.tween && next !== k ? j / (f.inb + 1) : 0, n: next });
+    for (let j = 1; j <= f.inb; j++) out.push({ k, u: f.tween && next !== k ? j / (f.inb + 1) : 0, n: next, i: out.length });
   });
   return out;
 }
@@ -24,10 +25,17 @@ export function entryOfKey(p, k) {
 
 export function evalKey(p, k) {
   const frame = p.frames[k];
-  return { k, frame, poses: frame.poses, xf: frame.xf };
+  return { k, frame, poses: frame.poses, xf: frame.xf, cam: camAt(p, k) };
 }
 
+// Rendered frame (playback / export): includes camera shake.
 export function evalEntry(p, e) {
+  const st = tweenEntry(p, e);
+  st.cam = withShake(st.cam, e.i ?? 0);
+  return st;
+}
+
+function tweenEntry(p, e) {
   if (!e.u) return evalKey(p, e.k);
   const A = p.frames[e.k], B = p.frames[e.n];
   const t = (EASES[A.ease] || EASES.linear)(e.u);
@@ -45,5 +53,5 @@ export function evalEntry(p, e) {
       }
     }
   }
-  return { k: e.k, frame: A, poses, xf };
+  return { k: e.k, frame: A, poses, xf, cam: lerpCam(camAt(p, e.k), camAt(p, e.n), t) };
 }

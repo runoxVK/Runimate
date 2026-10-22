@@ -73,6 +73,7 @@ export function initTimeline(el) {
     if (f.has('project') || f.has('frames') || f.has('layers')) rebuild();
     if (f.has('project') || f.has('layers') || f.has('thumbs')) markAll();
     else if (f.has('content')) markCurrent();
+    if (f.has('camera') || f.has('content')) P().frames.forEach((fr) => thumbs.get(fr.id)?.el.classList.toggle('has-cam', !!fr.cam));
     if (f.has('frame') || f.has('frames') || f.has('project')) updateCurrent();
     if (f.has('playframe') || f.has('play') || f.has('frame') || f.has('frames') || f.has('project')) updatePlayhead();
     if (f.has('prefs') || f.has('project') || f.has('play') || f.has('frames') || f.has('frame')) updateControls();
@@ -119,7 +120,7 @@ function rebuild() {
     let t = thumbs.get(f.id);
     if (!t) {
       const canvas = h('canvas', { class: 'thumb-c' });
-      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas, h('span', { class: 'fnum' }), h('span', { class: 'badge' }));
+      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas, h('span', { class: 'fnum' }), h('span', { class: 'badge' }), h('span', { class: 'cam-badge', title: 'Camera keyframe' }, icon('camera', 12)));
       t = { el, canvas, dirty: true };
       bindThumb(t, f.id);
       thumbs.set(f.id, t);
@@ -129,6 +130,7 @@ function rebuild() {
     t.el.querySelector('.fnum').textContent = i + 1;
     const badge = t.el.querySelector('.badge');
     badge.textContent = f.inb ? `${f.tween ? '~' : '⏸'}${f.inb}` : '';
+    t.el.classList.toggle('has-cam', !!f.cam);
     badge.title = f.inb ? `${f.inb} ${f.tween ? 'tweened' : 'held'} in-between frame${f.inb > 1 ? 's' : ''}` : '';
     t.el.style.setProperty('--inb', Math.min(f.inb, 12));
     t.el.setAttribute('aria-label', `Frame ${i + 1}${f.inb ? `, ${f.inb} in-betweens` : ''}`);

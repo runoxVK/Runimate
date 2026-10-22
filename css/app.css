@@ -240,6 +240,8 @@ body[data-tool=line] #stage-canvas, body[data-tool=rect] #stage-canvas, body[dat
 .frame-thumb.cur .fnum { color: var(--text); font-weight: 600; }
 .badge { position: absolute; top: -6px; right: -6px; font-size: 10px; background: var(--panel3); border: 1px solid var(--line); border-radius: 999px; padding: 0 5px; pointer-events: none; }
 .badge:empty { display: none; }
+.cam-badge { position: absolute; top: 5px; left: 5px; display: none; padding: 1px 3px; border-radius: 4px; background: rgba(255,176,32,.92); color: #1b1300; pointer-events: none; }
+.frame-thumb.has-cam .cam-badge { display: block; }
 .frame-add { flex: none; width: 52px; height: 52px; margin-bottom: 18px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: 10px; background: transparent; color: var(--muted); }
 .frame-add:hover { border-color: var(--accent); color: var(--accent); }
 .drop-marker { position: absolute; top: 6px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; }

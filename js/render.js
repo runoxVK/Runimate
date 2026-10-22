@@ -4,6 +4,7 @@ import { TAU, xfMatrix, IDENT_XF } from './geom.js';
 import { computeWorld, boneMatrix } from './rig.js';
 import { drawStrokes } from './brush.js';
 import { getStrokes } from './model.js';
+import { camMatrix } from './camera.js';
 
 const images = new Map();
 export let onImageLoad = () => {};
@@ -161,7 +162,11 @@ export function renderToCanvas(p, st, w, h, { bg = p.bg, canvas } = {}) {
   c.height = h;
   const ctx = c.getContext('2d');
   ctx.setTransform(w / p.width, 0, 0, h / p.height, 0, 0);
-  if (!bg) ctx.clearRect(0, 0, p.width, p.height);
-  renderScene(ctx, p, st, { bg });
+  if (bg) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, p.width, p.height);
+  } else ctx.clearRect(0, 0, p.width, p.height);
+  if (st.cam) ctx.transform(...camMatrix(p, st.cam));
+  renderScene(ctx, p, st);
   return c;
 }
