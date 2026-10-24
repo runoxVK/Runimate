@@ -8,7 +8,7 @@ import { h, icon, ibtn, popupMenu, popover } from './ui.js';
 import { prettyKey, keysFor } from './commands.js';
 import { importSound, updateSound, removeSound, peaks, preload } from './audio.js';
 
-let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, soundBtn, lane;
+let root, strip, playBtn, fpsInput, loopBtn, onionBtn, scrub, readout, frameInfo, soundBtn, lane, holdSeg, holdVal;
 const thumbs = new Map(); // frame id -> { el, canvas, dirty }
 let thumbTimer = 0, staleTimer = 0;
 
@@ -22,7 +22,7 @@ export function initTimeline(el) {
     onchange: (e) => { checkpoint('fps'); P().fps = Math.max(1, Math.min(60, +e.target.value || 12)); changed('project'); },
   });
   loopBtn = ibtn('loop', tip('Loop playback', 'loop'), () => { checkpoint(); P().loop = !P().loop; changed('project'); }, 'toggle');
-  onionBtn = ibtn('onion', tip('Onion skin', 'onion'), () => { app.onion.on = !app.onion.on; changed('prefs', 'content'); }, 'toggle');
+  onionBtn = ibtn('onion', tip('Onion skin (light table)', 'onion'), () => { app.onion.on = !app.onion.on; changed('prefs', 'content'); }, 'toggle');
   const onionMore = h('button', { class: 'ibtn mini', type: 'button', title: 'Onion skin settings', 'aria-label': 'Onion skin settings', onclick: (e) => onionPopover(e.currentTarget) }, icon('down', 14));
 
   frameInfo = h('span', { class: 'frame-info' });
@@ -41,7 +41,14 @@ export function initTimeline(el) {
     ),
     h('div', { class: 'tl-group frame-props' },
       frameInfo,
-      h('button', { type: 'button', class: 'btn', title: tip('Add a frame halfway between this frame and the next', 'mid-frame'), onclick: A.addMidFrame }, h('b', { class: 'half' }, '½'), h('span', {}, 'Add 50% frame')),
+      h('div', { class: 'hold-ctl', title: 'Hold: how many frames this drawing stays on screen — animating on 1s, 2s or 3s (K / Shift+K)' },
+        h('span', { class: 'lbl' }, 'Hold'),
+        (holdSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Hold for' }, [1, 2, 3].map((n) => h('button', { type: 'button', 'data-v': n, title: `Hold for ${n} (on ${n}s)`, onclick: () => A.setHold(n) }, `${n}s`)))),
+        h('div', { class: 'stepper' },
+          ibtn('minus', tip('Hold shorter', 'hold-less'), () => A.nudgeHold(-1), 'mini'),
+          (holdVal = h('span', { class: 'hold-val', 'aria-live': 'polite' }, '1')),
+          ibtn('plus', tip('Hold longer', 'hold-more'), () => A.nudgeHold(1), 'mini'))),
+      h('button', { type: 'button', class: 'btn', title: tip('Add a 50% frame (nakawari) halfway between this frame and the next', 'mid-frame'), onclick: A.addMidFrame }, h('span', { class: 'jp', 'aria-hidden': 'true' }, '中割'), h('span', {}, '50% frame')),
     ),
     h('div', { class: 'tl-group' },
       ibtn('plus', tip('New frame — copies poses, blank drawing', 'new-frame'), () => A.newFrame(false), 'accent'),
@@ -222,7 +229,9 @@ function rebuild() {
     let t = thumbs.get(f.id);
     if (!t) {
       const canvas = h('canvas', { class: 'thumb-c' });
-      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas, h('span', { class: 'fnum' }), h('span', { class: 'cam-badge', title: 'Camera keyframe' }, icon('camera', 12)));
+      const el = h('div', { class: 'frame-thumb', role: 'option', tabindex: '-1' }, canvas,
+        h('div', { class: 'cell-meta' }, h('span', { class: 'fnum' }), h('span', { class: 'kind', 'aria-hidden': 'true' }), h('span', { class: 'hold-chip' })),
+        h('span', { class: 'hold-bar' }), h('span', { class: 'cam-badge', title: 'Camera keyframe' }, icon('camera', 12)));
       t = { el, canvas, dirty: true };
       bindThumb(t, f.id);
       thumbs.set(f.id, t);
@@ -231,7 +240,18 @@ function rebuild() {
     t.canvas.style.height = `${th}px`;
     t.el.querySelector('.fnum').textContent = i + 1;
     t.el.classList.toggle('has-cam', !!f.cam);
-    t.el.setAttribute('aria-label', `Frame ${i + 1}`);
+    const mid = f.kind === 'mid', hold = f.hold || 1;
+    t.el.classList.toggle('mid', mid);
+    t.el.querySelector('.kind').textContent = mid ? '中' : '';
+    t.el.querySelector('.hold-chip').textContent = hold > 1 ? `×${hold}` : '';
+    // Exposure ticks beside the cell, one per extra frame (like hold lines on a timesheet).
+    const ticks = Math.min(hold - 1, 8) * 4;
+    const bar = t.el.querySelector('.hold-bar');
+    bar.style.width = `${ticks}px`;
+    bar.style.right = `${-ticks - 3}px`;
+    t.el.style.marginRight = `${4 + (ticks ? ticks + 4 : 0)}px`;
+    t.el.title = `${mid ? '50% frame (in-between)' : 'Key frame'} ${i + 1}${hold > 1 ? ` · held ${hold} frames` : ''}`;
+    t.el.setAttribute('aria-label', `Frame ${i + 1}${mid ? ', in-between' : ''}${hold > 1 ? `, held ${hold}` : ''}`);
     return t.el;
   });
   const add = h('button', { class: 'frame-add', type: 'button', title: tip('New frame', 'new-frame'), 'aria-label': 'New frame', onclick: () => A.newFrame(false) }, icon('plus', 22));
@@ -333,6 +353,13 @@ function updateCurrent() {
   const cur = thumbs.get(p.frames[app.cur]?.id);
   cur?.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   frameInfo.textContent = sel && sel[1] > sel[0] ? `Frames ${sel[0] + 1}–${sel[1] + 1}` : `Frame ${app.cur + 1} / ${p.frames.length}`;
+  const hold = p.frames[app.cur]?.hold || 1;
+  holdVal.textContent = hold;
+  for (const b of holdSeg.children) {
+    const on = +b.dataset.v === hold;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on);
+  }
 }
 
 function updatePlayhead() {

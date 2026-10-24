@@ -16,13 +16,13 @@ let binds = [];
 let search = '';
 
 const tip = (label, id) => (keysFor(id) ? `${label} (${prettyKey(keysFor(id))})` : label);
-const TABS = [['props', 'Properties', 'sliders'], ['layers', 'Layers', 'layers'], ['library', 'Library', 'library']];
+const TABS = [['props', 'Properties', 'sliders', '設定'], ['layers', 'Layers', 'layers', '層'], ['library', 'Library', 'library', '素材']];
 
 export function initPanels(el) {
   root = el;
   app.panelTab ||= 'props';
   app.panelOpen ??= innerWidth >= 900;
-  tabsEl = h('div', { class: 'tabs', role: 'tablist' }, TABS.map(([id, label, ic]) => h('button', {
+  tabsEl = h('div', { class: 'tabs', role: 'tablist' }, TABS.map(([id, label]) => h('button', {
     type: 'button', role: 'tab', 'data-tab': id, title: `${label} (${prettyKey(keysFor('panel-' + id))})`,
     onclick: () => { app.panelTab = id; changed('panel'); },
     onkeydown: (e) => {
@@ -34,7 +34,7 @@ export function initPanels(el) {
       changed('panel');
       setTimeout(() => tabsEl.querySelector('.on')?.focus());
     },
-  }, icon(ic, 16), h('span', {}, label))));
+  }, h('span', {}, label))));
   body = h('div', { class: 'panel-body', role: 'tabpanel' });
   root.append(tabsEl, body);
   onChange((f) => {
@@ -114,7 +114,9 @@ function seg(label, options, get, set) {
   return label ? h('div', { class: 'field col' }, h('span', {}, label), el) : el;
 }
 const btn = (label, ic, onclick, cls = '', title = '') => h('button', { type: 'button', class: `btn ${cls}`, onclick, title: title || label }, ic ? icon(ic, 16) : null, h('span', {}, label));
-const section = (title, ...children) => h('section', { class: 'psec' }, title ? h('h3', {}, title) : null, ...children);
+// title: 'Text' or ['Text', '漢字'] — the kanji is a decorative tag in the sakuga style.
+const section = (title, ...children) => h('section', { class: 'psec' },
+  title ? h('h3', {}, Array.isArray(title) ? [h('span', { class: 'jp', 'aria-hidden': 'true' }, title[1]), title[0]] : title) : null, ...children);
 const row = (...c) => h('div', { class: 'row gap wrap' }, ...c);
 
 // ---------------------------------------------------------------- Properties
@@ -141,7 +143,7 @@ function cameraProps() {
   let heldFrom = -1;
   if (!f.cam) for (let i = app.cur - 1; i >= 0; i--) if (p.frames[i].cam) { heldFrom = i; break; }
   return h('div', {},
-    section('Camera',
+    section(['Camera', '撮影'],
       h('p', { class: 'muted small' }, f.cam ? `Frame ${app.cur + 1} has its own camera. Use Add 50% frame (T) between two camera positions for a smooth move.`
         : heldFrom >= 0 ? `Holding the camera from frame ${heldFrom + 1}. Change anything to give this frame its own.` : 'No camera moves yet — the shot is the whole canvas. Move, zoom or turn the orange frame to start.'),
       h('div', { class: 'grid2' },
@@ -153,7 +155,7 @@ function cameraProps() {
       check('Camera view when playing', 'cview', () => app.camView, (v) => { app.camView = v; changed('pref-save'); }),
       row(btn('Reset camera', 'rotate', A.resetCamera, '', 'Back to the full canvas on this frame'),
         f.cam && app.cur > 0 ? btn('Remove camera key', 'trash', A.removeCameraKey, 'danger', 'Hold the previous camera instead') : null)),
-    section('Tips', h('ul', { class: 'tips' },
+    section(['Tips', '手引'], h('ul', { class: 'tips' },
       h('li', {}, 'Each frame can have its own camera; Add 50% frame (T) puts a halfway camera between two frames.'),
       h('li', {}, 'Shake jitters the shot for impacts — set it on one keyframe and 0 on the next to fade it out.'),
       h('li', {}, 'Exports and timeline thumbnails show the camera’s shot.'))));
@@ -168,11 +170,12 @@ function projectProps() {
     if (k === 'name' || k === 'fps') changed('project');
   });
   return h('div', {},
-    section('Animation', form, check('Loop playback', 'loop', () => p.loop, (v) => (p.loop = v))),
-    section('Getting started',
+    section(['Animation', '作品'], form, check('Loop playback', 'loop', () => p.loop, (v) => (p.loop = v))),
+    section(['Getting started', '手引'],
       h('ul', { class: 'tips' },
         h('li', {}, 'Drag the ', h('b', {}, 'round nodes'), ' to pose a figure. The ', h('b', {}, 'square node'), ' moves the whole figure.'),
-        h('li', {}, 'While drawing, press ', h('kbd', {}, 'Q'), ' for a ruler or ', h('kbd', {}, 'M'), ' for mirror symmetry.'),
+        h('li', {}, 'While drawing, press ', h('kbd', {}, 'Q'), ' for a ruler or ', h('kbd', {}, 'M'), ' for mirror symmetry. ', h('kbd', {}, 'G'), ' bucket-fills inside lines.'),
+        h('li', {}, h('b', {}, 'Hold'), ' a frame for 2 or 3 frames (', h('kbd', {}, 'K'), ') to animate on 2s or 3s, like anime.'),
         h('li', {}, 'Press ', h('kbd', {}, 'N'), ' for a new frame, then pose again. Press ', h('kbd', {}, 'T'), ' on a frame to add a ', h('b', {}, '50% frame'), ' halfway to the next one for smoother motion.'),
         h('li', {}, 'Pick the ', h('b', {}, 'Brush'), ' (', h('kbd', {}, 'B'), ') to draw on the current frame. Onion skin (', h('kbd', {}, 'O'), ') shows neighbours.'),
         h('li', {}, 'Select a joint and choose ', h('b', {}, 'Draw on this bone'), ' to give your figure drawn parts that move with it.'),
@@ -209,7 +212,7 @@ function figureProps(layer) {
       if (app.colorScope === 'frame') (pose().c ||= {})[s.node] = v;
       else nd().color = v;
     };
-    const joint = section(isRoot ? 'Main node' : 'Selected joint',
+    const joint = section(isRoot ? ['Main node', '中心'] : ['Selected joint', '関節'],
       isRoot ? h('p', { class: 'muted small' }, 'The main node moves the whole figure. Add joints to it to build new limbs.') : null,
       !isRoot ? seg('Segment shape (all frames)', SHAPES.map((x) => [x.id, x.label]), () => nd().shape, (v) => (nd().shape = v)) : null,
       !isRoot ? range('Thickness', 'nth', () => nd().thick, (v) => (nd().thick = v), { min: 1, max: 80, step: 1, fmt: (v) => `${v}px` }) : null,
@@ -232,17 +235,17 @@ function figureProps(layer) {
     );
     parts.push(joint);
     const art = node.art && node.art.strokes.length ? node.art : null;
-    parts.push(section('Drawn art on this bone',
+    parts.push(section(['Drawn art on this bone', '描画'],
       h('p', { class: 'muted small' }, art ? `${art.strokes.length} stroke${art.strokes.length > 1 ? 's' : ''} attached — they move${art.stretch !== false ? ' and stretch' : ''} with this bone on every frame.` : 'Draw a head, hand, hat or prop that sticks to this bone in every frame.'),
       row(btn(art ? 'Draw more' : 'Draw on this bone', 'brush', A.startBoneDraw, 'accent', tip('Draw on this bone', 'bone-draw'))),
       art && !isRoot ? check('Stretch with the bone', 'astr', () => nd().art?.stretch !== false, (v) => nd().art && (nd().art.stretch = v)) : null,
       art ? row(btn('Detach to layer', 'scissors', A.detachSelectedArt), btn('Remove art', 'trash', A.clearArt, 'danger')) : null,
     ));
   } else {
-    parts.push(section('Joints', h('p', { class: 'muted small' }, 'Tap a node to select a joint. ', h('kbd', {}, 'Tab'), ' cycles joints; arrow keys rotate and stretch.'),
+    parts.push(section(['Joints', '関節'], h('p', { class: 'muted small' }, 'Tap a node to select a joint. ', h('kbd', {}, 'Tab'), ' cycles joints; arrow keys rotate and stretch.'),
       row(btn('Add joint', 'plus', A.addNode))));
   }
-  parts.push(section('Rig',
+  parts.push(section(['Rig', '骨組'],
     row(btn('Set as default pose', 'check', A.setDefaultPose, '', 'Make this pose the default used by “Reset pose” and new copies'),
       btn('Remove from here on', 'trash', A.deleteSelection, 'danger', 'Remove the figure from this frame and every later frame'))));
   return h('div', {}, parts);
@@ -260,12 +263,12 @@ function joinSection(layer) {
   const j = layer.join;
   const parent = j && layerById(P(), j.parent);
   if (j && parent) {
-    return section('Attached to a figure',
+    return section(['Attached to a figure', '連結'],
       h('p', {}, 'Follows ', h('b', {}, parent.name), `’s ${jointName(j.node)} on every frame.`),
       check(`Scale with ${parent.name}`, 'jsc', () => layer.join?.scale !== false, (v) => A.setJoinScaling(v)),
       row(btn('Detach', 'scissors', A.detachSelected, '', tip('Detach', 'detach'))));
   }
-  return section('Attach to a figure',
+  return section(['Attach to a figure', '連結'],
     h('p', { class: 'muted small' }, 'Make this figure follow another figure’s joint — a sword in a hand, a hat on a head, a rider on a horse.'),
     row(btn('Attach to a joint…', 'bone', A.startJoin, '', tip('Attach to a joint', 'join'))),
     app.joinPending ? h('p', { class: 'callout' }, 'Tap the joint on the other figure. Esc cancels.') : null);
@@ -315,7 +318,7 @@ function layerProps(layer) {
 function boneDrawProps() {
   const layer = layerById(P(), app.boneDraw.id);
   const node = layer && nodeById(layer.rig, app.boneDraw.node);
-  return h('div', {}, section('Drawing on a bone',
+  return h('div', {}, section(['Drawing on a bone', '描画'],
     h('p', {}, 'Everything you draw now is attached to ', h('b', {}, `${layer?.name || 'the figure'}`), node?.parent ? ' — the highlighted bone.' : ' — its main node.'),
     h('p', { class: 'muted small' }, 'Pose the figure afterwards: the drawing follows the bone on every frame. Use the eraser to fix mistakes.'),
     row(btn('Done', 'check', A.endBoneDraw, 'primary', 'Finish (Esc)'))));
@@ -365,13 +368,13 @@ function layersTab() {
   list.append(...rows);
   const al = layerById(p, app.activeLayer);
   return h('div', {},
-    section('Add',
+    section(['Add', '追加'],
       h('div', { class: 'grid2' },
         btn('Frame-by-frame', 'brush', () => A.addLayer('frame'), '', 'New drawing layer: every keyframe has its own drawing'),
         btn('Sprite', 'sprite', () => A.addLayer('sprite'), '', 'New sprite layer: one drawing you animate by moving, turning and scaling'),
         btn('Figure', 'figure', () => { app.panelTab = 'library'; changed('panel'); }, '', 'Add a stick figure from the library'),
         btn('Image', 'image', A.importImage, '', 'Import a picture to trace over'))),
-    section('Layers', list,
+    section(['Layers', '層'], list,
       al ? range(`“${al.name}” opacity`, 'alop', () => al.opacity, (v) => (al.opacity = v), { fmt: (v) => `${Math.round(v * 100)}%` }) : null),
   );
 }
@@ -416,10 +419,10 @@ function libraryTab() {
       row(btn('Save selection', 'plus', saveSelectionToLibrary, 'accent', tip('Save the selected figure or drawing', 'save-asset')),
         ibtn('upload', 'Import library file (.runilib)', importLibrary),
         ibtn('download', 'Export your whole library (.runilib)', () => exportLibrary()))),
-    section('Built-in figures', grid(builtinAssets().filter(match), 'No match')),
-    section('My figures', grid(figs, q ? 'No match' : 'Select a figure and press “Save selection” — it keeps its rig, colours and drawn bone art.')),
-    section('My drawings', grid(draws, q ? 'No match' : 'Select strokes (lasso) or a drawing layer and press “Save selection”.')),
-    section('My motions', grid(motions, q ? 'No match' : 'Select an animated figure and press “Save motion…” in Properties. Tap a motion here to apply it to the selected figure.')),
+    section(['Built-in figures', '標準'], grid(builtinAssets().filter(match), 'No match')),
+    section(['My figures', '人物'], grid(figs, q ? 'No match' : 'Select a figure and press “Save selection” — it keeps its rig, colours and drawn bone art.')),
+    section(['My drawings', '作画'], grid(draws, q ? 'No match' : 'Select strokes (lasso) or a drawing layer and press “Save selection”.')),
+    section(['My motions', '動き'], grid(motions, q ? 'No match' : 'Select an animated figure and press “Save motion…” in Properties. Tap a motion here to apply it to the selected figure.')),
   );
 }
 

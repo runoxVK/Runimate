@@ -17,6 +17,12 @@ function buildPaths(s) {
     fill.moveTo(p[0], p[1]);
     for (let i = 1; i < n; i++) fill.lineTo(p[i * 3], p[i * 3 + 1]);
     fill.closePath();
+    // Bucket fills can have holes (flat [x, y, ...] rings), drawn with the even-odd rule.
+    for (const h of s.holes || []) {
+      fill.moveTo(h[0], h[1]);
+      for (let i = 2; i < h.length; i += 2) fill.lineTo(h[i], h[i + 1]);
+      fill.closePath();
+    }
   }
   if (s.w > 0 && n >= 1) {
     line = new Path2D();
@@ -55,7 +61,7 @@ export function drawStroke(ctx, s, live = false) {
   ctx.globalAlpha = a * (s.o ?? 1);
   if (fill) {
     ctx.fillStyle = s.fill;
-    ctx.fill(fill);
+    ctx.fill(fill, s.holes ? 'evenodd' : 'nonzero');
   }
   if (line) {
     ctx.fillStyle = s.c;
@@ -93,7 +99,7 @@ export function hitStroke(s, x, y, tol = 0, inside = false) {
   const b = strokeBox(s);
   if (x < b.x0 - tol || x > b.x1 + tol || y < b.y0 - tol || y > b.y1 + tol) return false;
   const p = s.pts, n = p.length / 3;
-  if ((s.fill || (inside && s.closed)) && n >= 3 && pointInPoly(x, y, p, 3)) return true;
+  if ((s.fill || (inside && s.closed)) && n >= 3 && pointInPoly(x, y, p, 3) && !(s.holes || []).some((h) => pointInPoly(x, y, h, 2))) return true;
   if (n === 1) return Math.hypot(x - p[0], y - p[1]) <= tol + rad(s, 0);
   const last = s.closed ? n : n - 1;
   for (let i = 0; i < last; i++) {
@@ -177,7 +183,18 @@ export function transformStroke(s, m) {
     out[i + 2] = p[i + 2];
   }
   const k = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
-  return { ...s, pts: out, w: round2(s.w * k) };
+  const t = { ...s, pts: out, w: round2(s.w * k) };
+  if (s.holes) {
+    t.holes = s.holes.map((h) => {
+      const o = [];
+      for (let i = 0; i < h.length; i += 2) {
+        const q = apply(m, h[i], h[i + 1]);
+        o.push(round2(q[0]), round2(q[1]));
+      }
+      return o;
+    });
+  }
+  return t;
 }
 
 // Applies end tapering and rounds coordinates once a freehand stroke ends.

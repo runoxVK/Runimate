@@ -78,6 +78,32 @@ export function moveFrames(dir) {
   changed('frames', 'frame');
 }
 
+// Exposure: how many rendered frames each selected frame stays on screen.
+export function setHold(n) {
+  const [a, b] = range();
+  checkpoint('hold');
+  for (let i = a; i <= b; i++) P().frames[i].hold = Math.max(1, Math.min(99, n | 0));
+  changed('frames');
+}
+export function nudgeHold(d) {
+  const [a, b] = range();
+  checkpoint('hold');
+  for (let i = a; i <= b; i++) {
+    const f = P().frames[i];
+    f.hold = Math.max(1, Math.min(99, (f.hold || 1) + d));
+  }
+  changed('frames');
+  const f = P().frames[app.cur];
+  toast(`Hold ×${f.hold} (on ${f.hold}s)`, { ms: 900 });
+}
+// Shoot the whole animation on 1s / 2s / 3s.
+export function shootOn(n) {
+  checkpoint();
+  for (const f of P().frames) f.hold = n;
+  changed('frames');
+  toast(`Every frame now holds for ${n} — animating on ${n}s`, { ms: 1600 });
+}
+
 // Stick Nodes' "add 50% frame": a new frame halfway between this frame and the next.
 export function addMidFrame() {
   const p = P();

@@ -13,6 +13,8 @@ http://localhost:8040.
 `On your iPad: http://192.168.1.20:8040`. Open that address in Safari, then Share → *Add to Home Screen*
 for a full-screen app. If the iPad can't connect, allow Python through Windows Firewall (private networks).
 
+**Version history:** Runimate snapshots each animation every few minutes while you work (the last 30), and `Ctrl+Alt+S` saves a named version. *File → Version history* (`Ctrl+Alt+H`) restores one — your current state is kept as a version first — or opens it as a copy.
+
 **Where your work is saved:** every animation autosaves in the browser. On a computer with Chrome or Edge
 you can also pick a **projects folder** (Ctrl+O → *Choose a projects folder…*): each animation then
 autosaves there as `<name>.runimate`, and your library as `Runimate library.runilib`. After a browser
@@ -28,9 +30,9 @@ For the iPad app to work offline and keep a stable home, host the folder on any 
 | --- | --- |
 | Pose | Drag the round nodes (Rotate mode). **Stretch** mode changes bone length, **IK** mode drags a hand/foot and bends the elbow/knee. The square main node or the body moves the figure; round handle rotates, square handle scales. Shift snaps to 15°. |
 | Frames | `N` new frame (copies poses), `Shift+N` duplicate incl. drawings. Drag thumbnails to reorder. |
-| Timing | Every frame on the timeline is one frame, like Stick Nodes; **FPS** sets the speed. **Add 50% frame** (`T`, or the ½ button) inserts a frame halfway between the current frame and the next — joints, positions, sprite moves, colours and the camera all land at 50%. Duplicate a frame (`Shift+N`) to hold a pose longer. Projects made with the old in-betweens are converted to real frames when opened, so they play the same. |
+| Timing | Every frame on the timeline is one frame, like Stick Nodes; **FPS** sets the speed. **Add 50% frame** (`T`, or the ½ button) inserts a frame halfway between the current frame and the next — joints, positions, sprite moves, colours and the camera all land at 50%. **Hold** sets how many frames a drawing stays on screen — animate on 1s, 2s or 3s with the timeline's `1s / 2s / 3s` buttons, or `K` / `Shift+K` (gold ticks on the timesheet show the exposure). Key frames have circled numbers; 50% frames are marked 中. Projects made with the old in-betweens are converted to real frames when opened, so they play the same. |
 | Onion skin | `O`; the arrow next to the button sets frames before/after and strength. |
-| Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, line/rect/ellipse, lasso select, eyedropper. |
+| Drawing | Brush (pressure + smoothing + taper), eraser (partial or whole stroke), fill shape, **bucket fill** (`G`: tap inside lines; *Close gaps* bridges small openings, *Use all layers* fills colour under another layer's line art, tapping a fill recolours it), line/rect/ellipse, lasso select, eyedropper. |
 | Joining | Select a figure (e.g. the Sword), press `J` (or *Attach to a joint…*), then tap the joint it should follow (e.g. a hand). It now moves with that joint on every frame; its X / Y / Turn become offsets from the joint. *Scale with* follows the parent's size; `Shift+J` detaches in place. |
 | Colour & fade | Joint colour can apply to **all frames** or **this frame** (tweens between keyframes). Each joint has a per-frame **opacity** (0 hides it), and each figure a per-frame **fade**. |
 | Motions | Select an animated figure → *Save motion…* stores its keyframes (angles, movement, colours, timing) in the Library. Select any figure with the same joints and tap the motion to apply it, with a repeat count (walk cycles keep walking forward). |

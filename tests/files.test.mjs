@@ -74,10 +74,13 @@ test('older projects with in-betweens open as real frames that play the same', a
     Object.assign(p.frames[1], { inb: 1, tween: false, ease: 'linear' });
     p.loop = false;
     const q = validateProject(JSON.parse(JSON.stringify(p)));
-    return { n: q.frames.length, xs: q.frames.map((f) => Math.round(f.poses[l.id].x - q.frames[0].poses[l.id].x)), leftover: q.frames.some((f) => 'inb' in f || 'tween' in f) };
+    const { totalFrames } = await import('/js/tween.js');
+    return { n: q.frames.length, total: totalFrames(q), holds: q.frames.map((f) => f.hold), xs: q.frames.map((f) => Math.round(f.poses[l.id].x - q.frames[0].poses[l.id].x)), leftover: q.frames.some((f) => 'inb' in f || 'tween' in f) };
   });
-  assert.equal(r.n, 5);
-  assert.deepEqual(r.xs, [0, 30, 60, 90, 90]);
+  assert.equal(r.n, 4);
+  assert.equal(r.total, 5, 'still plays 5 frames');
+  assert.deepEqual(r.xs, [0, 30, 60, 90]);
+  assert.deepEqual(r.holds, [1, 1, 1, 2], 'the held in-between became a hold of 2');
   assert.equal(r.leftover, false);
 });
 

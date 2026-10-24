@@ -19,6 +19,7 @@ const TOOLS = [
   ['brush', 'brush', 'Brush', 'tool-brush'],
   ['eraser', 'eraser', 'Eraser', 'tool-eraser'],
   ['fill', 'fill', 'Fill shape', 'tool-fill'],
+  ['bucket', 'bucket', 'Bucket fill', 'tool-bucket'],
   ['line', 'line', 'Line', 'tool-line'],
   ['rect', 'rect', 'Rectangle', 'tool-rect'],
   ['ellipse', 'ellipse', 'Ellipse', 'tool-ellipse'],
@@ -49,7 +50,7 @@ export function initShell() {
   undoBtn = ibtn('undo', tip('Undo', 'undo'), () => undo());
   redoBtn = ibtn('redo', tip('Redo', 'redo'), () => redo());
   const menuBtn = h('button', { type: 'button', class: 'brand', title: 'Menu', 'aria-label': 'Main menu', onclick: (e) => mainMenu(e.currentTarget) },
-    h('span', { class: 'logo', 'aria-hidden': 'true' }, icon('figure', 18)), h('span', { class: 'brand-name' }, 'Runimate'), icon('down', 14));
+    h('span', { class: 'logo', 'aria-hidden': 'true' }, '走'), h('span', { class: 'brand-name' }, 'RUNIMATE'), icon('down', 14));
   topbar.append(
     h('div', { class: 'tb-left' }, menuBtn, nameBtn, saveState),
     h('div', { class: 'tb-mid' }, undoBtn, redoBtn,
@@ -58,7 +59,7 @@ export function initShell() {
     h('div', { class: 'tb-right' },
       ibtn('search', tip('Command palette', 'palette'), () => runCommand('palette')),
       ibtn('keyboard', tip('Keyboard shortcuts', 'help'), openHelp),
-      h('button', { type: 'button', class: 'btn primary', title: tip('Export', 'export'), onclick: () => openExport() }, icon('export', 16), h('span', { class: 'hide-sm' }, 'Export')),
+      h('button', { type: 'button', class: 'btn primary', title: tip('Export', 'export'), onclick: () => openExport() }, icon('export', 16), h('span', { class: 'hide-sm' }, 'Export'), h('span', { class: 'jp hide-sm', 'aria-hidden': 'true', style: { color: 'inherit', opacity: '.7' } }, '書出')),
       ibtn('panel', tip('Toggle side panel', 'panel'), () => runCommand('panel'))),
   );
 
@@ -167,6 +168,7 @@ function mainMenu(anchor) {
     '-',
     item('save', 'Save', 'save'),
     item('save-as', 'Save to file…', 'download'),
+    item('versions', 'Version history…', 'undo'),
     item('export', 'Export GIF / MP4 / PNG…', 'export'),
     '-',
     item('import-image', 'Import image to trace…', 'image'),
@@ -260,6 +262,13 @@ function renderOptions() {
     parts.push(optColor('Fill colour', () => f.color, (v) => (f.color = v)), swatches((c) => (f.color = c), f.color));
     parts.push(optSlider('Opacity', () => f.opacity, (v) => (f.opacity = v), { min: 0.05, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%`, width: 80 }));
     parts.push(hint('Draw around an area to fill it'));
+  } else if (t === 'bucket') {
+    const bk = app.bucket;
+    parts.push(optColor('Fill colour', () => bk.color, (v) => (bk.color = v)), swatches((c) => (bk.color = c), bk.color));
+    parts.push(optSlider('Opacity', () => bk.opacity, (v) => (bk.opacity = v), { min: 0.05, max: 1, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%`, width: 80 }));
+    parts.push(optSlider('Close gaps', () => bk.gap, (v) => (bk.gap = v), { min: 0, max: 12, step: 1, fmt: (v) => (v ? `${v}px` : 'off'), width: 80 }));
+    parts.push(optCheck('Use all layers', () => bk.allLayers, (v) => (bk.allLayers = v), 'Lines on every visible layer (and figures) count as edges'));
+    parts.push(hint('Tap inside lines to fill · tap a fill to recolour it'));
   } else if (t === 'lasso') {
     parts.push(hint('Draw a loop around strokes (Shift adds) · tap a stroke to pick it'));
     if (app.sel?.type === 'strokes') parts.push(
@@ -276,7 +285,7 @@ function renderOptions() {
   }
 
   const drawing = ['brush', 'eraser', 'fill', 'line', 'rect', 'ellipse'].includes(t);
-  const right = drawing || t === 'lasso' ? targetPicker() : null;
+  const right = drawing || t === 'lasso' || t === 'bucket' ? targetPicker() : null;
   optbar.replaceChildren(h('div', { class: 'opts' }, parts), h('div', { class: 'opts-right' }, drawing ? rulerButton() : null, right));
 }
 

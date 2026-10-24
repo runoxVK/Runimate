@@ -37,6 +37,7 @@ export async function saveMotionToLibrary(refresh) {
     const f = p.frames[k], q = f.poses[layer.id];
     if (!q) continue;
     frames.push({
+      hold: f.hold || 1,
       a: { ...q.a }, l: { ...q.l }, c: q.c ? { ...q.c } : null, o: q.o ? { ...q.o } : null, op: q.op ?? null,
       dx: q.x - base.x, dy: q.y - base.y, dr: q.r - base.r, ds: q.s / (base.s || 1),
     });
@@ -81,6 +82,7 @@ export async function applyMotion(asset) {
     { key: 'start', label: 'Start at keyframe', type: 'number', value: app.cur + 1, min: 1, max: p.frames.length + 1 },
     { key: 'repeat', label: 'Repeat', type: 'number', value: 1, min: 1, max: 50 },
     { key: 'move', label: 'Include movement (walking travels across the canvas)', type: 'checkbox', value: true },
+    { key: 'timing', label: 'Use the motion’s holds (1s / 2s / 3s)', type: 'checkbox', value: true },
   ], { ok: 'Apply', note: `${clip.frames.length} keyframes${v0(clip)}. Frames are added at the end if needed.` });
   if (!v) return;
   const ids = new Set(layer.rig.nodes.map((n) => n.id));
@@ -126,6 +128,7 @@ export async function applyMotion(asset) {
         q.s = base.s;
       }
       q.flip = base.flip;
+      if (v.timing && cf.hold) f.hold = cf.hold;
       f.poses[layer.id] = q;
       k++;
     }

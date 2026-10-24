@@ -10,6 +10,7 @@ import { saveSelectionToLibrary, importLibrary, exportLibrary } from './library.
 import { h, icon, openDialog, isTyping, toast, isMac } from './ui.js';
 import { toggleRuler, setRulerType, ruler } from './ruler.js';
 import { importSound } from './audio.js';
+import { versionsDialog, snapshot } from './versions.js';
 
 export const commands = [];
 const byId = new Map();
@@ -30,6 +31,8 @@ cmd('open-file', 'File', 'Open project file…', 'ctrl+shift+o', openFile);
 cmd('save', 'File', 'Save', 'ctrl+s', save);
 cmd('save-as', 'File', 'Save to file…', 'ctrl+shift+s', saveAs);
 cmd('folder', 'File', 'Projects folder on this computer…', null, projectsDialog);
+cmd('versions', 'File', 'Version history…', 'ctrl+alt+h', () => versionsDialog());
+cmd('save-version', 'File', 'Save a version now', 'ctrl+alt+s', async () => { await snapshot('Saved version', false); toast('Version saved — see File → Version history', { ms: 1600 }); });
 cmd('export', 'File', 'Export (GIF, MP4, PNG)…', 'ctrl+e', () => openExport());
 cmd('import-image', 'File', 'Import image (for tracing)…', 'ctrl+alt+i', A.importImage);
 cmd('lib-import', 'File', 'Import library file…', null, importLibrary);
@@ -54,6 +57,7 @@ cmd('tool-select', 'Tools', 'Animate / select tool', 'v', tool('select'));
 cmd('tool-brush', 'Tools', 'Brush', 'b', tool('brush'));
 cmd('tool-eraser', 'Tools', 'Eraser', 'e', tool('eraser'));
 cmd('tool-fill', 'Tools', 'Fill shape (draw a filled area)', 'f', tool('fill'));
+cmd('tool-bucket', 'Tools', 'Bucket fill (tap inside lines)', 'g', tool('bucket'));
 cmd('tool-line', 'Tools', 'Line', 'l', tool('line'));
 cmd('tool-rect', 'Tools', 'Rectangle', 'r', tool('rect'));
 cmd('tool-ellipse', 'Tools', 'Ellipse', 'u', tool('ellipse'));
@@ -97,6 +101,11 @@ cmd('extend-right', 'Frames', 'Extend frame selection right', 'shift+.', () => e
 cmd('copy-frames', 'Frames', 'Copy frame(s)', 'ctrl+alt+c', A.copyFrames);
 cmd('paste-frames', 'Frames', 'Paste frame(s) after current', 'ctrl+alt+v', A.pasteFrames);
 cmd('mid-frame', 'Frames', 'Add 50% frame (halfway to the next frame)', 't', A.addMidFrame);
+cmd('hold-more', 'Frames', 'Hold frame longer (+1)', 'k', () => A.nudgeHold(1));
+cmd('hold-less', 'Frames', 'Hold frame shorter (−1)', 'shift+k', () => A.nudgeHold(-1));
+cmd('shoot-1', 'Frames', 'Animate on 1s (every frame held 1)', null, () => A.shootOn(1));
+cmd('shoot-2', 'Frames', 'Animate on 2s (every frame held 2)', null, () => A.shootOn(2));
+cmd('shoot-3', 'Frames', 'Animate on 3s (every frame held 3)', null, () => A.shootOn(3));
 
 // ---- Playback & view
 cmd('play', 'Playback', 'Play / pause', 'space', togglePlay);
@@ -114,7 +123,7 @@ cmd('ruler-line', 'Tools', 'Straight ruler', 'shift+q', () => { setRulerType('li
 cmd('ruler-circle', 'Tools', 'Circle ruler', null, () => { setRulerType('circle'); rulerToast(); });
 cmd('ruler-mirror', 'Tools', 'Mirror symmetry', 'm', () => { setRulerType('mirror'); rulerToast(); });
 cmd('ruler-anywhere', 'Tools', 'Ruler: snap strokes from anywhere', null, () => { ruler().anywhere = !ruler().anywhere; changed('pref-save', 'ruler'); toast(ruler().anywhere ? 'Every stroke follows the ruler' : 'Only strokes started near the ruler follow it', { ms: 1600 }); });
-cmd('grid', 'View', 'Toggle grid', 'g', () => { app.grid = !app.grid; changed('prefs', 'content'); });
+cmd('grid', 'View', 'Toggle grid', 'shift+g', () => { app.grid = !app.grid; changed('prefs', 'content'); });
 cmd('panel', 'View', 'Show / hide side panel', '\\', () => { app.panelOpen = !app.panelOpen; changed('panel'); });
 cmd('panel-props', 'View', 'Properties panel', 'alt+1', panelTab('props'));
 cmd('panel-layers', 'View', 'Layers panel', 'alt+2', panelTab('layers'));

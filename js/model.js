@@ -6,7 +6,8 @@
 //     draw:   mode 'frame' (own drawing per keyframe) | 'sprite' (one drawing, animated transform)
 //             strokes (sprite only), pv (pivot, local coords)
 //     image:  src (data URL), w, h, pv
-//   frames: one entry per rendered frame, each { poses, draws, xf, cam? }
+//   frames: timeline frames, each { hold, kind?, poses, draws, xf, cam? }
+//     hold = how many rendered frames it stays on screen (1s, 2s, 3s…); kind 'mid' marks a 50% frame
 //     poses[layerId] = Pose   (figure present in this frame iff a pose exists)
 //     draws[layerId] = [Stroke]  (frame-mode draw layers)
 //     xf[layerId]   = { x, y, r, s }  (draw / image layer transform)
@@ -27,7 +28,7 @@ export const VERSION = 1;
 export { uid };
 
 export function newFrame() {
-  return { id: uid('f'), poses: {}, draws: {}, xf: {} };
+  return { id: uid('f'), hold: 1, poses: {}, draws: {}, xf: {} };
 }
 
 export function newProject({ name = 'Untitled animation', width = 1280, height = 720, fps = 12, bg = '#ffffff', starter = true } = {}) {
@@ -151,6 +152,7 @@ export const deepClone = (v) => (typeof structuredClone === 'function' ? structu
 export function makeFrameFrom(src, copyDrawings) {
   const f = cloneFrame(src);
   f.id = uid('f');
+  delete f.kind; // a new frame made from a 50% frame is a key of its own
   if (!copyDrawings) f.draws = {};
   return f;
 }
@@ -180,6 +182,7 @@ export function validateProject(data) {
     f.poses ||= {};
     f.draws ||= {};
     f.xf ||= {};
+    f.hold = Math.max(1, Math.min(99, f.hold | 0 || 1));
   }
   return bakeInbetweens(p);
 }

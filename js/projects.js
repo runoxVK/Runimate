@@ -85,7 +85,7 @@ export async function saveAs() {
   }
 }
 
-async function switchTo(project, handle = null) {
+export async function switchTo(project, handle = null) {
   if (P()) await saveLocal();
   setProject(project);
   app.fileHandle = handle;
@@ -170,6 +170,7 @@ export async function projectsDialog() {
       h('div', { class: 'row gap wrap', style: { marginBottom: '14px' } },
         h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); newProjectDialog(); } }, icon('new', 16), ' New animation'),
         h('button', { class: 'btn', type: 'button', onclick: () => { close(); openFile(); } }, icon('folder', 16), ` Open ${EXT} file…`),
+        h('button', { class: 'btn', type: 'button', onclick: () => { close(); import('./versions.js').then((m) => m.versionsDialog()); } }, icon('undo', 16), ' Version history…'),
       ),
       folderBox,
       h('h3', { class: 'sec-title' }, 'Saved in this browser'),

@@ -13,6 +13,7 @@ export const app = {
   eraser: { size: 24, mode: 'cut' },
   shape: { stroke: true, fill: false, fillColor: '#4fc3f7' },
   fillTool: { color: '#4fc3f7', opacity: 1 },
+  bucket: { color: '#ffd54f', opacity: 1, gap: 2, allLayers: true },
   swatches: ['#1b1b1f', '#ffffff', '#ef5350', '#ff9800', '#ffd54f', '#66bb6a', '#4fc3f7', '#5c6bc0', '#ab47bc', '#8d6e63', '#9e9e9e', '#f8bbd0'],
   onion: { on: true, before: 1, after: 1, opacity: 0.35 },
   grid: false,
@@ -33,7 +34,7 @@ export const app = {
   savedRev: 0,
 };
 
-const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler', 'camView', 'colorScope'];
+const PREF_KEYS = ['brush', 'eraser', 'shape', 'fillTool', 'bucket', 'swatches', 'onion', 'grid', 'snap', 'poseMode', 'fingerDraws', 'ruler', 'camView', 'colorScope'];
 export function loadPrefs() {
   try {
     const p = JSON.parse(localStorage.getItem('runimate.prefs') || '{}');

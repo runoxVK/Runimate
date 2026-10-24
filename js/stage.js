@@ -12,6 +12,7 @@ import { toast, popupMenu } from './ui.js';
 import { snapper, mirrorMatrix, rulerHandles, dragRulerHandle, drawRuler, ruler } from './ruler.js';
 import { camAt, camUsed, camCorners, camMatrix, ensureCam } from './camera.js';
 import { resolvePoses, localDelta, wouldCycle, joinLayer } from './join.js';
+import { traceFillRegion } from './bucket.js';
 
 export const view = { z: 1, x: 0, y: 0 };
 let canvas, ctx, dpr = 1, cssW = 0, cssH = 0;
@@ -502,6 +503,7 @@ function startTool(e, sx, sy) {
   const tool = app.tool;
   if (tool === 'select' || app.attachPending) return startSelect(e, sx, sy, x, y);
   if (tool === 'camera') return startCamera(e, sx, sy, x, y);
+  if (tool === 'bucket') return bucketAt(x, y);
   if (tool === 'eyedropper') return eyedrop(sx, sy);
   if (e.altKey && (tool === 'brush' || tool === 'fill')) return eyedrop(sx, sy, true);
   if (tool === 'lasso') {
@@ -937,6 +939,46 @@ function eyedrop(sx, sy, keepTool = false) {
   toast(`Picked ${hex}`, { ms: 1200 });
 }
 
+// ---------------------------------------------------------------- bucket fill
+function bucketAt(x, y) {
+  if (app.boneDraw) return toast('The bucket fills drawing layers, not bone art', { kind: 'warn' });
+  const target = drawTarget();
+  if (!target?.layer) return;
+  const layer = target.layer, f = curFrame();
+  const m = layerMat(layer), mi = inv(m);
+  const strokes = getStrokes(layer, f);
+  const b = app.bucket;
+  const [lx, ly] = apply(mi, x, y);
+  // Tapping an existing fill just recolours it.
+  const hit = [...strokes].reverse().find((s) => s.fill && !(s.w > 0) && hitStroke(s, lx, ly, 0));
+  if (hit) {
+    checkpoint();
+    setStrokes(layer, f, strokes.map((s) => (s === hit ? { ...s, fill: b.color, c: b.color, o: b.opacity } : s)));
+    changed('content');
+    return;
+  }
+  const region = traceFillRegion(x, y, { targetLayer: layer, sampleAll: b.allLayers, gap: b.gap });
+  if (!region) return toast('Tap inside an area surrounded by lines', { ms: 1600 });
+  const local = (ring, stride) => {
+    const out = [];
+    for (let i = 0; i < ring.length; i += 2) {
+      const [a, c] = apply(mi, ring[i], ring[i + 1]);
+      out.push(round2(a), round2(c));
+      if (stride === 3) out.push(1);
+    }
+    return out;
+  };
+  const stroke = { pts: local(region.outer, 3), w: 0, c: b.color, o: b.opacity, fill: b.color, closed: true };
+  if (region.holes.length) stroke.holes = region.holes.map((h) => local(h, 2));
+  checkpoint();
+  // Fills go underneath the line art.
+  const at = strokes.findIndex((s) => s.w > 0);
+  const arr = strokes.slice();
+  arr.splice(at < 0 ? arr.length : at, 0, stroke);
+  setStrokes(layer, f, arr);
+  changed('content');
+}
+
 // ---------------------------------------------------------------- bone art
 export function startAttach() {
   if (app.sel?.type !== 'strokes') return toast('Select strokes with the lasso first');
@@ -1024,7 +1066,54 @@ function openContextMenu(cx, cy) {
 }
 
 // ---------------------------------------------------------------- rendering
-const ONION_PAST = '#ff4d6d', ONION_FUTURE = '#2bb6a8';
+// Onion skins in animator's pencil colours: red for earlier frames, blue for later ones.
+const ONION_PAST = '#ff3b2f', ONION_FUTURE = '#3d6bff';
+
+let monoFont = '';
+// The animation desk around the sheet: a faint dot grid, peg-bar holes above the paper
+// and a timesheet-style label with the frame number and hold.
+function drawDesk(p, W, H) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,.045)';
+  const step = 24 * dpr;
+  const ox = ((view.x * dpr) % step + step) % step, oy = ((view.y * dpr) % step + step) % step;
+  for (let y = oy; y < H; y += step) for (let x = ox; x < W; x += step) ctx.fillRect(x, y, dpr, dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const [ax, ay] = toScreen(0, 0), [bx] = toScreen(p.width, 0);
+  const cx = (ax + bx) / 2, w = bx - ax, py = ay - 16;
+  if (py > 6 && w > 160) {
+    ctx.fillStyle = 'rgba(255,255,255,.06)';
+    ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    ctx.lineWidth = 1;
+    const slot = (x, sw) => {
+      ctx.beginPath();
+      const r = 4;
+      ctx.moveTo(x - sw / 2 + r, py - r);
+      ctx.arc(x + sw / 2 - r, py, r, -Math.PI / 2, Math.PI / 2);
+      ctx.arc(x - sw / 2 + r, py, r, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    };
+    slot(cx, 10);
+    slot(cx - w * 0.22, 30);
+    slot(cx + w * 0.22, 30);
+    // Frame label, top-left of the sheet.
+    const f = p.frames[app.cur];
+    if (f) {
+      monoFont ||= getComputedStyle(document.documentElement).getPropertyValue('--mono').trim() || 'monospace';
+      ctx.font = `600 11px ${monoFont}`;
+      ctx.textBaseline = 'middle';
+      const label = `${f.kind === 'mid' ? '中 ' : ''}#${app.cur + 1}${(f.hold || 1) > 1 ? `  ×${f.hold}` : ''}`;
+      ctx.fillStyle = f.kind === 'mid' ? 'rgba(91,132,255,.85)' : 'rgba(240,82,45,.9)';
+      ctx.fillText(label, ax, py);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(236,231,220,.35)';
+      ctx.fillText(`${p.width}×${p.height} · ${p.fps}fps`, bx, py);
+    }
+  }
+  ctx.restore();
+}
 
 let workspaceColor = null;
 function render(noOverlay = false) {
@@ -1036,6 +1125,7 @@ function render(noOverlay = false) {
   workspaceColor ||= getComputedStyle(document.documentElement).getPropertyValue('--workspace').trim() || '#1c1e23';
   ctx.fillStyle = workspaceColor;
   ctx.fillRect(0, 0, W, H);
+  drawDesk(p, W, H);
   const base = [dpr * view.z, 0, 0, dpr * view.z, dpr * view.x, dpr * view.y];
   ctx.setTransform(...base);
 

@@ -185,9 +185,14 @@ async function exportNow(setP, isCancelled) {
       let t = 0, prevCs = 0;
       for (let i = 0; i < entries.length; i++) {
         if (isCancelled()) return null;
-        renderToCanvas(p, evalEntry(p, entries[i]), w, hh, { bg, canvas });
+        const st = evalEntry(p, entries[i]);
+        // Held frames (and no camera shake) are identical: write one longer GIF frame.
+        let run = 1;
+        while (!st.cam?.shake && entries[i + run]?.k === entries[i].k) run++;
+        renderToCanvas(p, st, w, hh, { bg, canvas });
         const data = canvas.getContext('2d').getImageData(0, 0, w, hh).data;
-        t += 100 / fps;
+        i += run - 1;
+        t += (100 / fps) * run;
         const cs = Math.round(t);
         gif.addFrame(data, cs - prevCs, { transparent: !bg });
         prevCs = cs;

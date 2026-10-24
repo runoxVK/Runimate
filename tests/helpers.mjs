@@ -89,6 +89,7 @@ export async function openApp({ width = 1366, height = 900, touch = false } = {}
         audio: await import('/js/audio.js'),
         folder: await import('/js/folder.js'),
         projects: await import('/js/projects.js'),
+        versions: await import('/js/versions.js'),
       };
       // eslint-disable-next-line no-new-func
       return new Function('m', 'args', `return (${src})(m, ...args);`)(mods, args);
